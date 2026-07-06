@@ -1,6 +1,5 @@
 import { GamificationProfile } from '../models/gamification.model';
-import { NotFoundError, BadRequestError } from '../errors/app-error';
-import { Types } from 'mongoose';
+import { BadRequestError } from '../errors/app-error';
 
 export class GamificationService {
   public async getProfile(userId: string) {

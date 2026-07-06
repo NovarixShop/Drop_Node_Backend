@@ -23,25 +23,16 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
-        cache-dependency-path: './Backend_1/package-lock.json'
+        cache-dependency-path: './package-lock.json'
 
-    # Note: We run these inside Backend_1 since it's the backend subproject
     - name: Install dependencies
-      run: |
-        cd Backend_1
-        npm ci
+      run: npm ci
 
     - name: Run TypeScript Linter Check
-      run: |
-        cd Backend_1
-        npm run lint
+      run: npm run lint
 
     - name: Run Jest Tests
-      run: |
-        cd Backend_1
-        npm run test
+      run: npm run test
 
     - name: Verify Production Compilation
-      run: |
-        cd Backend_1
-        npm run build
+      run: npm run build

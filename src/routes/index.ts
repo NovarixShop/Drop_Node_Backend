@@ -15,6 +15,7 @@ import blogRouter from './blog.routes';
 import cmsRouter from './cms.routes';
 import notificationRouter from './notification.routes';
 import analyticsRouter from './analytics.routes';
+import gamificationRouter from './gamification.routes';
 
 const router = Router();
 
@@ -34,6 +35,7 @@ router.use('/deals', dealRouter);
 router.use('/blogs', blogRouter);
 router.use('/cms', cmsRouter);
 router.use('/notifications', notificationRouter);
+router.use('/gamification', gamificationRouter);
 router.use('/admin/analytics', analyticsRouter);
 
 export default router;

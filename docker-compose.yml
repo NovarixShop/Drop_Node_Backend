@@ -8,9 +8,9 @@ services:
       dockerfile: api-gateway/Dockerfile
     container_name: ecommerce_api_gateway
     ports:
-      - "5010:5000"
+      - "127.0.0.1:5010:5000"
     env_file:
-      - .env
+      - .env.local
     environment:
       - PORT=5000
       - NODE_ENV=production
@@ -37,10 +37,9 @@ services:
       context: .
       dockerfile: auth-service/Dockerfile
     container_name: ecommerce_auth_service
-    ports:
-      - "5001:5001"
+
     env_file:
-      - .env
+      - .env.local
     environment:
       - PORT=5001
       - NODE_ENV=production
@@ -56,10 +55,9 @@ services:
       context: .
       dockerfile: catalog-service/Dockerfile
     container_name: ecommerce_catalog_service
-    ports:
-      - "5002:5002"
+
     env_file:
-      - .env
+      - .env.local
     environment:
       - PORT=5002
       - NODE_ENV=production
@@ -75,10 +73,9 @@ services:
       context: .
       dockerfile: cart-service/Dockerfile
     container_name: ecommerce_cart_service
-    ports:
-      - "5003:5003"
+
     env_file:
-      - .env
+      - .env.local
     environment:
       - PORT=5003
       - NODE_ENV=production
@@ -97,10 +94,9 @@ services:
       context: .
       dockerfile: order-service/Dockerfile
     container_name: ecommerce_order_service
-    ports:
-      - "5004:5004"
+
     env_file:
-      - .env
+      - .env.local
     environment:
       - PORT=5004
       - NODE_ENV=production
@@ -121,10 +117,9 @@ services:
       context: .
       dockerfile: notification-service/Dockerfile
     container_name: ecommerce_notification_service
-    ports:
-      - "5005:5005"
+
     env_file:
-      - .env
+      - .env.local
     environment:
       - PORT=5005
       - NODE_ENV=production
@@ -140,10 +135,9 @@ services:
       context: .
       dockerfile: content-service/Dockerfile
     container_name: ecommerce_content_service
-    ports:
-      - "5006:5006"
+
     env_file:
-      - .env
+      - .env.local
     environment:
       - PORT=5006
       - NODE_ENV=production

@@ -14,7 +14,7 @@ const app = express();
 app.use(helmet());
 
 // Enable CORS
-const allowedOrigins = [env.CLIENT_URL, 'http://localhost:3001', 'http://localhost:3000'];
+const allowedOrigins = [env.CLIENT_URL, env.CMS_URL, 'http://localhost:3001', 'http://localhost:3000'];
 app.use(
   cors({
     origin: (origin, callback) => {

@@ -3,7 +3,7 @@ import path from 'path';
 import { z } from 'zod';
 
 // Load environment variables from .env file
-dotenv.config({ path: path.join(__dirname, '../../.env') });
+dotenv.config({ path: path.join(__dirname, '../../.env.local') });
 
 const envSchema = z.object({
   PORT: z.coerce.number().default(5000),
@@ -35,6 +35,7 @@ const envSchema = z.object({
   STRIPE_SECRET_KEY: z.string().default('sk_test_mock'),
   STRIPE_WEBHOOK_SECRET: z.string().default('whsec_mock'),
   CLIENT_URL: z.string().default('http://localhost:3000'),
+  CMS_URL: z.string().default('http://localhost:3001'),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

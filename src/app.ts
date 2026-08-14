@@ -14,9 +14,16 @@ const app = express();
 app.use(helmet());
 
 // Enable CORS
+const allowedOrigins = [env.CLIENT_URL, 'http://localhost:3001', 'http://localhost:3000'];
 app.use(
   cors({
-    origin: env.CLIENT_URL,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, true); // Allow during dev
+      }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],

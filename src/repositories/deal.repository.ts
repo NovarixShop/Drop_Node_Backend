@@ -25,13 +25,12 @@ export class DealRepository {
     return Deal.findByIdAndDelete(id).exec();
   }
 
-  // Find all active deals based on current timestamp
+  // Find all active or scheduled deals based on current timestamp
   public async findActiveDeals(): Promise<IDeal[]> {
     const now = new Date();
     return Deal.find({
       isActive: true,
-      startTime: { $lte: now },
-      endTime: { $gte: now },
+      endTime: { $gte: now }, // both active and scheduled have end time in the future
     })
       .populate('products', 'name price slug images compareAtPrice stock')
       .exec();

@@ -9,6 +9,10 @@ const registerSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
+const googleLoginSchema = z.object({
+  idToken: z.string().min(1, 'ID Token is required'),
+});
+
 const loginSchema = z.object({
   email: z.string().email('Please provide a valid email address'),
   password: z.string().min(1, 'Password is required'),
@@ -63,6 +67,45 @@ export class AuthController {
           user,
           accessToken,
         },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Google Login
+  public async googleLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const validatedBody = googleLoginSchema.parse(req.body);
+      const { user, accessToken, refreshToken } = await authService.googleLogin(validatedBody.idToken);
+
+      res.cookie('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+
+      res.status(200).json({
+        status: 'success',
+        message: 'Google login successful',
+        data: { user, accessToken },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Register Admin
+  public async registerAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const validatedBody = registerSchema.parse(req.body);
+      const user = await authService.registerAdmin(validatedBody);
+      
+      res.status(201).json({
+        status: 'success',
+        message: 'Admin created successfully.',
+        data: { user },
       });
     } catch (error) {
       next(error);

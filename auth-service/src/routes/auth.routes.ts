@@ -7,6 +7,7 @@ const router = Router();
 // Public auth routes
 router.post('/register', authController.register.bind(authController));
 router.post('/login', authController.login.bind(authController));
+router.post('/google-login', authController.googleLogin.bind(authController));
 router.post('/refresh', authController.refresh.bind(authController));
 router.post('/verify-email', authController.verifyEmail.bind(authController));
 router.post('/forgot-password', authController.forgotPassword.bind(authController));

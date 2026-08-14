@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import { createProxyMiddleware } from 'http-proxy-middleware';
+import proxy from 'express-http-proxy';
 import dotenv from 'dotenv';
 import path from 'path';
 
@@ -15,16 +15,20 @@ const PORT = process.env.PORT || 5000;
 app.use(helmet());
 
 // 2. CORS Policies
+const allowedOrigins = process.env.CORS_ORIGINS 
+  ? process.env.CORS_ORIGINS.split(',') 
+  : ['http://localhost:3000', 'http://localhost:3001', 'https://www.admin.com', 'https://cms.admin.com', 'https://admin.com'];
+
 app.use(
   cors({
-    origin: true, // In production, replace with specific domain, e.g. client URL
+    origin: allowedOrigins,
     credentials: true,
   })
 );
 
 // 3. Global Rate Limiting
 const limiter = rateLimit({
-  max: 150, // Limit each IP to 150 requests per 15-minute window
+  max: 1000, // Limit each IP to 1000 requests per 15-minute window for production Next.js apps
   windowMs: 15 * 60 * 1000,
   message: 'Too many requests from this IP, please try again in 15 minutes.',
   standardHeaders: true,
@@ -36,6 +40,21 @@ app.use(limiter);
 app.use((req, _res, next) => {
   console.log(`[Gateway] [${new Date().toISOString()}] ${req.method} ${req.originalUrl} -> Routing...`);
   next();
+});
+
+// TEST ROUTE TO BYPASS HTTP-PROXY-MIDDLEWARE
+app.use('/api/test-login', express.json(), async (req, res) => {
+  try {
+    const response = await fetch('http://auth-service:5001/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body)
+    });
+    const text = await response.text();
+    res.status(response.status).send(text);
+  } catch (e) {
+    res.status(500).send('FETCH ERROR: ' + (e as Error).message);
+  }
 });
 
 // 5. Block Public Access to Internal APIs (Security Best Practice!)
@@ -55,31 +74,31 @@ const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localho
 const CONTENT_URL = process.env.CONTENT_SERVICE_URL || 'http://localhost:5006';
 
 // Auth & User Service Proxy
-app.use('/api/auth', createProxyMiddleware({ target: AUTH_URL, changeOrigin: true, pathRewrite: { '^/': '/api/auth/' } }));
-app.use('/api/users', createProxyMiddleware({ target: AUTH_URL, changeOrigin: true, pathRewrite: { '^/': '/api/users/' } }));
+app.use('/api/auth', proxy(AUTH_URL, { proxyReqPathResolver: (req: any) => '/api/auth' + req.url }));
+app.use('/api/users', proxy(AUTH_URL, { proxyReqPathResolver: (req: any) => '/api/users' + req.url }));
 
 // Catalog & Product Service Proxy
-app.use('/api/products', createProxyMiddleware({ target: CATALOG_URL, changeOrigin: true, pathRewrite: { '^/': '/api/products/' } }));
-app.use('/api/categories', createProxyMiddleware({ target: CATALOG_URL, changeOrigin: true, pathRewrite: { '^/': '/api/categories/' } }));
-app.use('/api/deals', createProxyMiddleware({ target: CATALOG_URL, changeOrigin: true, pathRewrite: { '^/': '/api/deals/' } }));
-app.use('/api/inventory', createProxyMiddleware({ target: CATALOG_URL, changeOrigin: true, pathRewrite: { '^/': '/api/inventory/' } }));
+app.use('/api/products', proxy(CATALOG_URL, { proxyReqPathResolver: (req: any) => '/api/products' + req.url }));
+app.use('/api/categories', proxy(CATALOG_URL, { proxyReqPathResolver: (req: any) => '/api/categories' + req.url }));
+app.use('/api/deals', proxy(CATALOG_URL, { proxyReqPathResolver: (req: any) => '/api/deals' + req.url }));
+app.use('/api/inventory', proxy(CATALOG_URL, { proxyReqPathResolver: (req: any) => '/api/inventory' + req.url }));
 
 // Cart & Wishlist Service Proxy
-app.use('/api/cart', createProxyMiddleware({ target: CART_URL, changeOrigin: true, pathRewrite: { '^/': '/api/cart/' } }));
-app.use('/api/wishlist', createProxyMiddleware({ target: CART_URL, changeOrigin: true, pathRewrite: { '^/': '/api/wishlist/' } }));
-app.use('/api/coupons', createProxyMiddleware({ target: CART_URL, changeOrigin: true, pathRewrite: { '^/': '/api/coupons/' } }));
+app.use('/api/cart', proxy(CART_URL, { proxyReqPathResolver: (req: any) => '/api/cart' + req.url }));
+app.use('/api/wishlist', proxy(CART_URL, { proxyReqPathResolver: (req: any) => '/api/wishlist' + req.url }));
+app.use('/api/coupons', proxy(CART_URL, { proxyReqPathResolver: (req: any) => '/api/coupons' + req.url }));
 
 // Order & Checkout Service Proxy
-app.use('/api/orders', createProxyMiddleware({ target: ORDER_URL, changeOrigin: true, pathRewrite: { '^/': '/api/orders/' } }));
-app.use('/api/payments', createProxyMiddleware({ target: ORDER_URL, changeOrigin: true, pathRewrite: { '^/': '/api/payments/' } }));
-app.use('/api/tracking', createProxyMiddleware({ target: ORDER_URL, changeOrigin: true, pathRewrite: { '^/': '/api/tracking/' } }));
+app.use('/api/orders', proxy(ORDER_URL, { proxyReqPathResolver: (req: any) => '/api/orders' + req.url }));
+app.use('/api/payments', proxy(ORDER_URL, { proxyReqPathResolver: (req: any) => '/api/payments' + req.url }));
+app.use('/api/tracking', proxy(ORDER_URL, { proxyReqPathResolver: (req: any) => '/api/tracking' + req.url }));
 
 // Notification Service Proxy
-app.use('/api/notifications', createProxyMiddleware({ target: NOTIFICATION_URL, changeOrigin: true, pathRewrite: { '^/': '/api/notifications/' } }));
+app.use('/api/notifications', proxy(NOTIFICATION_URL, { proxyReqPathResolver: (req: any) => '/api/notifications' + req.url }));
 
 // CMS & Blog Service Proxy
-app.use('/api/blogs', createProxyMiddleware({ target: CONTENT_URL, changeOrigin: true, pathRewrite: { '^/': '/api/blogs/' } }));
-app.use('/api/cms', createProxyMiddleware({ target: CONTENT_URL, changeOrigin: true, pathRewrite: { '^/': '/api/cms/' } }));
+app.use('/api/blogs', proxy(CONTENT_URL, { proxyReqPathResolver: (req: any) => '/api/blogs' + req.url }));
+app.use('/api/cms', proxy(CONTENT_URL, { proxyReqPathResolver: (req: any) => '/api/cms' + req.url }));
 
 // Unified Swagger Documentation Aggregator placeholder
 // (In Phase 7, we will configure this to fetch and display aggregated OpenAPIs)

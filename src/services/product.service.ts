@@ -170,8 +170,21 @@ export class ProductService {
 
     // 5. Recursive Category Filtering (Fetch products in child categories as well!)
     if (query.category) {
+      let categoryId = query.category;
+      
+      // If the category is not a valid ObjectId, assume it's a slug
+      if (!categoryId.match(/^[0-9a-fA-F]{24}$/)) {
+        const cat = await categoryRepository.findBySlug(categoryId);
+        if (cat) {
+          categoryId = cat._id.toString();
+        } else {
+          // Force no results if slug is invalid
+          categoryId = '000000000000000000000000';
+        }
+      }
+      
       // Find all categories recursively
-      const categoryIds = await this.getCategoryFamilyIds(query.category);
+      const categoryIds = await this.getCategoryFamilyIds(categoryId);
       filter.category = { $in: categoryIds };
     }
 

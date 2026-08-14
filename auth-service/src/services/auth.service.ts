@@ -6,6 +6,9 @@ import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/email';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { redisCache } from '../config/redis.config';
+import { OAuth2Client } from 'google-auth-library';
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 export class AuthService {
   private userRepo: UserRepository;
@@ -83,6 +86,52 @@ export class AuthService {
       accessToken,
       refreshToken,
     };
+  }
+
+  public async googleLogin(idToken: string): Promise<{
+    user: Omit<IUser, 'password'>;
+    accessToken: string;
+    refreshToken: string;
+  }> {
+    if (!idToken) throw new BadRequestError('ID Token is required');
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email) {
+      throw new UnauthorizedError('Invalid Google Token');
+    }
+
+    const { email, name } = payload;
+    let user = await this.userRepo.findByEmail(email, '+refreshToken');
+    
+    if (!user) {
+      // Create user if not exists
+      user = await this.userRepo.create({
+        name: name || 'Google User',
+        email,
+        isVerified: true, // Google emails are already verified
+        password: crypto.randomBytes(32).toString('hex'), // Random password for oauth users
+      });
+    }
+
+    // Generate tokens
+    const tokenPayload = { userId: user.id, role: user.role };
+    const accessToken = generateAccessToken(tokenPayload);
+    const refreshToken = generateRefreshToken(tokenPayload);
+
+    // Save refresh token
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    const userObj = user.toObject();
+    delete userObj.password;
+    delete userObj.refreshToken;
+
+    return { user: userObj, accessToken, refreshToken };
   }
 
   public async refresh(token: string): Promise<{ accessToken: string }> {

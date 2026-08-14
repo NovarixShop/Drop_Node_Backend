@@ -13,6 +13,10 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
+const googleLoginSchema = z.object({
+  idToken: z.string().min(1, 'ID Token is required'),
+});
+
 const forgotPasswordSchema = z.object({
   email: z.string().email('Please provide a valid email address'),
 });
@@ -59,6 +63,28 @@ export class AuthController {
           user,
           accessToken,
         },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  public async googleLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const validatedBody = googleLoginSchema.parse(req.body);
+      const { user, accessToken, refreshToken } = await authService.googleLogin(validatedBody.idToken);
+
+      res.cookie('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+
+      res.status(200).json({
+        status: 'success',
+        message: 'Google login successful',
+        data: { user, accessToken },
       });
     } catch (error) {
       next(error);

@@ -1,28 +1,6 @@
 version: '3.8'
 
 services:
-  # 1. MongoDB Database Container
-  mongo:
-    image: mongo:6.0
-    container_name: ecommerce_mongodb
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo-data:/data/db
-    restart: always
-    mem_limit: 512m
-
-  # 2. Redis Cache & Event Bus Container
-  redis:
-    image: redis:7.0-alpine
-    container_name: ecommerce_redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    restart: always
-    mem_limit: 256m
-
   # 3. Central API Gateway
   api-gateway:
     build:
@@ -30,7 +8,9 @@ services:
       dockerfile: api-gateway/Dockerfile
     container_name: ecommerce_api_gateway
     ports:
-      - "5000:5000"
+      - "5010:5000"
+    env_file:
+      - .env
     environment:
       - PORT=5000
       - NODE_ENV=production
@@ -59,24 +39,14 @@ services:
     container_name: ecommerce_auth_service
     ports:
       - "5001:5001"
+    env_file:
+      - .env
     environment:
       - PORT=5001
       - NODE_ENV=production
-      - MONGODB_URI=mongodb://mongo:27017/ecommerce_auth
       - REDIS_ENABLED=true
-      - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=production_docker_access_secret_key_change_me_immediately
-      - JWT_REFRESH_SECRET=production_docker_refresh_secret_key_change_me_immediately
-      - JWT_EXPIRES_IN=15m
-      - JWT_REFRESH_EXPIRES_IN=7d
-      - EMAIL_HOST=smtp.mailtrap.io
-      - EMAIL_PORT=2525
-      - EMAIL_FROM=noreply@ecommerce.com
       - CLIENT_URL=http://api-gateway:5000
       - NODE_OPTIONS=--max-old-space-size=128
-    depends_on:
-      - mongo
-      - redis
     restart: always
     mem_limit: 192m
 
@@ -88,17 +58,14 @@ services:
     container_name: ecommerce_catalog_service
     ports:
       - "5002:5002"
+    env_file:
+      - .env
     environment:
       - PORT=5002
       - NODE_ENV=production
-      - MONGODB_URI=mongodb://mongo:27017/ecommerce_catalog
       - REDIS_ENABLED=true
-      - REDIS_URL=redis://redis:6379
       - CLIENT_URL=http://api-gateway:5000
       - NODE_OPTIONS=--max-old-space-size=128
-    depends_on:
-      - mongo
-      - redis
     restart: always
     mem_limit: 192m
 
@@ -110,18 +77,16 @@ services:
     container_name: ecommerce_cart_service
     ports:
       - "5003:5003"
+    env_file:
+      - .env
     environment:
       - PORT=5003
       - NODE_ENV=production
-      - MONGODB_URI=mongodb://mongo:27017/ecommerce_cart
       - REDIS_ENABLED=true
-      - REDIS_URL=redis://redis:6379
       - CATALOG_SERVICE_URL=http://catalog-service:5002
       - CLIENT_URL=http://api-gateway:5000
       - NODE_OPTIONS=--max-old-space-size=128
     depends_on:
-      - mongo
-      - redis
       - catalog-service
     restart: always
     mem_limit: 192m
@@ -134,19 +99,17 @@ services:
     container_name: ecommerce_order_service
     ports:
       - "5004:5004"
+    env_file:
+      - .env
     environment:
       - PORT=5004
       - NODE_ENV=production
-      - MONGODB_URI=mongodb://mongo:27017/ecommerce_orders
       - REDIS_ENABLED=true
-      - REDIS_URL=redis://redis:6379
       - CART_SERVICE_URL=http://cart-service:5003
       - CATALOG_SERVICE_URL=http://catalog-service:5002
       - CLIENT_URL=http://api-gateway:5000
       - NODE_OPTIONS=--max-old-space-size=128
     depends_on:
-      - mongo
-      - redis
       - catalog-service
       - cart-service
     restart: always
@@ -160,17 +123,14 @@ services:
     container_name: ecommerce_notification_service
     ports:
       - "5005:5005"
+    env_file:
+      - .env
     environment:
       - PORT=5005
       - NODE_ENV=production
-      - MONGODB_URI=mongodb://mongo:27017/ecommerce_notifications
       - REDIS_ENABLED=true
-      - REDIS_URL=redis://redis:6379
       - CLIENT_URL=http://api-gateway:5000
       - NODE_OPTIONS=--max-old-space-size=128
-    depends_on:
-      - mongo
-      - redis
     restart: always
     mem_limit: 192m
 
@@ -182,22 +142,13 @@ services:
     container_name: ecommerce_content_service
     ports:
       - "5006:5006"
+    env_file:
+      - .env
     environment:
       - PORT=5006
       - NODE_ENV=production
-      - MONGODB_URI=mongodb://mongo:27017/ecommerce_content
       - REDIS_ENABLED=true
-      - REDIS_URL=redis://redis:6379
       - CLIENT_URL=http://api-gateway:5000
       - NODE_OPTIONS=--max-old-space-size=128
-    depends_on:
-      - mongo
-      - redis
     restart: always
     mem_limit: 192m
-
-volumes:
-  mongo-data:
-    driver: local
-  redis-data:
-    driver: local

@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
+import cookieParser from 'cookie-parser';
 import { globalErrorHandler } from '@shared/middlewares/error.middleware';
 import { NotFoundError } from '@shared/errors/app-error';
 import router from './routes';
@@ -9,10 +10,11 @@ import router from './routes';
 const app = express();
 
 app.use(helmet());
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({ origin: ['https://www.admin.com', 'https://cms.admin.com', 'https://admin.com', 'http://localhost:3000', 'http://localhost:3001'], credentials: true }));
 
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+app.use(cookieParser());
 
 // Request logging middleware
 app.use((req, res, next) => {

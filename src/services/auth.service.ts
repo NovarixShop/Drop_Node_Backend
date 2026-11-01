@@ -5,6 +5,7 @@ import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '.
 import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/email';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
+import { UserRole } from '../constants';
 import { redisCache } from '../config/redis.config';
 import { OAuth2Client } from 'google-auth-library';
 
@@ -164,7 +165,7 @@ export class AuthService {
       name,
       email,
       password,
-      role: 'admin',
+      role: UserRole.ADMIN,
       isVerified: true,
     });
 

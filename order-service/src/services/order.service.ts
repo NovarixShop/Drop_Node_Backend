@@ -184,6 +184,15 @@ export class OrderService {
       throw new BadRequestError(`Cannot update status of a ${order.orderStatus} order.`);
     }
 
+    // Admin cancellations must return reserved stock just like customer cancellations do
+    if (status === OrderStatus.CANCELLED) {
+      const releaseItems = order.items.map((item: any) => ({
+        productId: item.product.toString(),
+        quantity: item.quantity,
+      }));
+      await catalogClient.releaseStock(releaseItems);
+    }
+
     order.orderStatus = status;
     order.statusHistory.push({
       status,

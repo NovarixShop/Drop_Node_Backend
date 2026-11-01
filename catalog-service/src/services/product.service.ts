@@ -7,6 +7,7 @@ import { BadRequestError, NotFoundError } from '@shared/errors/app-error';
 import { redisCache } from '../config/redis.config';
 import { logger } from '@shared/utils/logger';
 import { Category } from '../models/category.model';
+import { isValidObjectId } from 'mongoose';
 
 const PRODUCT_CACHE_PREFIX = 'products:slug:';
 
@@ -73,6 +74,19 @@ export class ProductService {
     return product;
   }
 
+  // Get product by id (admin: includes inactive products)
+  public async getProductById(id: string): Promise<IProduct> {
+    if (!isValidObjectId(id)) {
+      throw new NotFoundError('Product not found');
+    }
+
+    const product = await this.productRepo.findById(id);
+    if (!product) {
+      throw new NotFoundError('Product not found');
+    }
+    return product;
+  }
+
   // Update a product
   public async updateProduct(id: string, updateData: Partial<IProduct>): Promise<IProduct> {
     const product = await this.productRepo.findById(id);
@@ -130,8 +144,8 @@ export class ProductService {
     inStock?: string;
     sort?: string;
   }): Promise<{ products: IProduct[]; total: number; page: number; limit: number; pages: number }> {
-    const page = parseInt(query.page || '1', 10);
-    const limit = parseInt(query.limit || '12', 10);
+    const page = Math.max(parseInt(query.page || '1', 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(query.limit || '12', 10) || 12, 1), 100);
     const skip = (page - 1) * limit;
 
     const filter: any = { isActive: true };
@@ -155,7 +169,18 @@ export class ProductService {
     }
 
     if (query.category) {
-      const categoryIds = await this.getCategoryFamilyIds(query.category);
+      // The storefront filters by category slug, the CMS by id: accept both
+      let categoryId: string | null = query.category;
+      if (!isValidObjectId(query.category)) {
+        const category = await categoryRepository.findBySlug(query.category.toLowerCase());
+        categoryId = category ? category._id.toString() : null;
+      }
+
+      if (!categoryId) {
+        return { products: [], total: 0, page, limit, pages: 0 };
+      }
+
+      const categoryIds = await this.getCategoryFamilyIds(categoryId);
       filter.category = { $in: categoryIds };
     }
 

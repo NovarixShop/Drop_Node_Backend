@@ -24,6 +24,10 @@ export class PaymentService {
       throw new BadRequestError('Order is already paid');
     }
 
+    if (order.orderStatus === OrderStatus.CANCELLED) {
+      throw new BadRequestError('Cannot pay for a cancelled order');
+    }
+
     logger.info(`💳 [Stripe Mock] Charging card for order: ${orderId}, amount: $${order.totals.grandTotal}`);
 
     const { cardNumber } = cardDetails;
@@ -100,6 +104,11 @@ export class PaymentService {
 
       if (order.paymentStatus === PaymentStatus.PAID) {
         logger.info(`🔌 [Webhook Mock] Order ${orderId} is already marked as Paid. Skipping.`);
+        return;
+      }
+
+      if (order.orderStatus === OrderStatus.CANCELLED) {
+        logger.warn(`🔌 [Webhook Mock] Order ${orderId} was cancelled before payment settled. Skipping.`);
         return;
       }
 

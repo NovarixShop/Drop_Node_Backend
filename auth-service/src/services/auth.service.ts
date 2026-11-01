@@ -5,6 +5,7 @@ import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '@
 import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/email';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
+import { UserRole } from '@shared/constants';
 import { redisCache } from '../config/redis.config';
 import { OAuth2Client } from 'google-auth-library';
 
@@ -40,6 +41,33 @@ export class AuthService {
     });
 
     sendVerificationEmail(user.email, user.name, verificationToken);
+
+    const userObj = user.toObject();
+    delete userObj.password;
+
+    return userObj;
+  }
+
+  // Register Admin (only callable by existing admin)
+  public async registerAdmin(userData: Partial<IUser>): Promise<Omit<IUser, 'password'>> {
+    const { name, email, password } = userData;
+
+    if (!name || !email || !password) {
+      throw new BadRequestError('Name, email, and password are required');
+    }
+
+    const existingUser = await this.userRepo.findByEmail(email);
+    if (existingUser) {
+      throw new BadRequestError('Email is already registered');
+    }
+
+    const user = await this.userRepo.create({
+      name,
+      email,
+      password,
+      role: UserRole.ADMIN,
+      isVerified: true,
+    });
 
     const userObj = user.toObject();
     delete userObj.password;

@@ -1,4 +1,5 @@
 import { logger } from '@shared/utils/logger';
+import { BadRequestError } from '@shared/errors/app-error';
 
 export class CartClient {
   private baseUrl: string;
@@ -62,7 +63,7 @@ export class CatalogClient {
         const body = (await response.json()) as { status: string; message: string };
         message = body.message || message;
       } catch (_) {}
-      throw new Error(message);
+      throw response.status < 500 ? new BadRequestError(message) : new Error(message);
     }
   }
 
@@ -87,3 +88,25 @@ export class CatalogClient {
 
 export const cartClient = new CartClient();
 export const catalogClient = new CatalogClient();
+
+// Fetch a count from another service's internal endpoint; analytics degrade to 0 rather than failing the dashboard
+const fetchInternalCount = async (url: string, field: string): Promise<number> => {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      logger.error(`[InternalCount] ${url} returned status ${response.status}`);
+      return 0;
+    }
+    const body = (await response.json()) as { data: Record<string, number> };
+    return body.data[field] ?? 0;
+  } catch (error) {
+    logger.error(`[InternalCount] Failed to fetch ${url}:`, error);
+    return 0;
+  }
+};
+
+export const countActiveProducts = (): Promise<number> =>
+  fetchInternalCount(`${process.env.CATALOG_SERVICE_URL || 'http://localhost:5002'}/api/internal/products/count`, 'products');
+
+export const countCustomers = (): Promise<number> =>
+  fetchInternalCount(`${process.env.AUTH_SERVICE_URL || 'http://localhost:5001'}/api/internal/users/count`, 'customers');

@@ -3,6 +3,9 @@ import { IUser, IAddress } from '../models/user.model';
 import { NotFoundError, BadRequestError } from '@shared/errors/app-error';
 import { UserRole } from '@shared/constants';
 
+
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 export class UserService {
   private userRepo: UserRepository;
 
@@ -116,8 +119,8 @@ export class UserService {
 
     if (query.search) {
       filter.$or = [
-        { name: { $regex: query.search, $options: 'i' } },
-        { email: { $regex: query.search, $options: 'i' } },
+        { name: { $regex: escapeRegex(query.search), $options: 'i' } },
+        { email: { $regex: escapeRegex(query.search), $options: 'i' } },
       ];
     }
 

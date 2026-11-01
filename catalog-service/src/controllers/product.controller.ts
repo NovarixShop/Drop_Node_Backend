@@ -50,6 +50,18 @@ export class ProductController {
     }
   }
 
+  public async getById(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const product = await productService.getProductById(req.params.id);
+      res.status(200).json({
+        status: 'success',
+        data: { product },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   public async create(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const validatedBody = createProductSchema.parse(req.body);

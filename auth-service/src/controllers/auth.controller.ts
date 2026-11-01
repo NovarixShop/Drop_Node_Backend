@@ -41,6 +41,21 @@ export class AuthController {
     }
   }
 
+  public async registerAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const validatedBody = registerSchema.parse(req.body);
+      const user = await authService.registerAdmin(validatedBody);
+
+      res.status(201).json({
+        status: 'success',
+        message: 'Admin created successfully.',
+        data: { user },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   public async login(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const validatedBody = loginSchema.parse(req.body);
@@ -131,7 +146,8 @@ export class AuthController {
 
   public async verifyEmail(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { token } = req.query;
+      // GET from the emailed link carries the token in the query; POST may send it in the body
+      const token = req.query.token || req.body?.token;
       await authService.verifyEmail(token as string);
 
       res.status(200).json({

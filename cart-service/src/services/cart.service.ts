@@ -106,7 +106,7 @@ export class CartService {
     }
 
     const coupon = await couponRepository.findByCode(code);
-    if (!coupon) {
+    if (!coupon || (coupon.assignedTo && coupon.assignedTo !== userId)) {
       throw new NotFoundError('Coupon code is invalid');
     }
 
@@ -150,29 +150,29 @@ export class CartService {
 
     const productIds = cart.items.map((item: any) => item.product.toString());
     if (productIds.length > 0) {
-      try {
-        const products = await catalogClient.getProductsInBulk(productIds);
-        const productMap = new Map<string, ICatalogProduct>();
-        products.forEach(p => productMap.set(p._id.toString(), p));
+      // Let catalog failures propagate: falling back to 0 would save a zeroed cart and drop the user's coupon
+      const products = await catalogClient.getProductsInBulk(productIds);
+      const productMap = new Map<string, ICatalogProduct>();
+      products.forEach(p => productMap.set(p._id.toString(), p));
 
-        cart.items.forEach((item: any) => {
-          const prodId = item.product.toString();
-          const product = productMap.get(prodId);
-          if (product && product.isActive) {
-            subtotal += product.price * item.quantity;
-          }
-        });
-      } catch (err) {
-        logger.error('Error fetching prices during recalculateTotals, using 0 fallback', err);
-      }
+      cart.items.forEach((item: any) => {
+        const prodId = item.product.toString();
+        const product = productMap.get(prodId);
+        if (product && product.isActive) {
+          subtotal += product.price * item.quantity;
+        }
+      });
     }
 
     let discount = 0;
+    let freeShipping = false;
 
     if (cart.couponCode) {
       const coupon = await couponRepository.findByCode(cart.couponCode);
       if (coupon && coupon.isValid(subtotal)) {
-        if (coupon.discountType === CouponDiscountType.PERCENTAGE) {
+        if (coupon.discountType === CouponDiscountType.FREE_SHIPPING) {
+          freeShipping = true;
+        } else if (coupon.discountType === CouponDiscountType.PERCENTAGE) {
           discount = subtotal * (coupon.discountValue / 100);
         } else {
           discount = coupon.discountValue;
@@ -184,7 +184,7 @@ export class CartService {
     }
 
     const netAmount = subtotal - discount;
-    const shipping = cart.items.length === 0 ? 0 : netAmount >= 100 ? 0 : 10;
+    const shipping = cart.items.length === 0 || freeShipping ? 0 : netAmount >= 100 ? 0 : 10;
     const tax = Math.round(netAmount * 0.1 * 100) / 100;
     const grandTotal = Math.round((netAmount + tax + shipping) * 100) / 100;
 

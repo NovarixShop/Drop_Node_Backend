@@ -2,9 +2,10 @@ import { Request, Response, NextFunction } from 'express';
 import { orderService } from '../services/order.service';
 import { paymentService } from '../services/payment.service';
 import { trackingService } from '../services/tracking.service';
-import { ForbiddenError } from '@shared/errors/app-error';
+import { ForbiddenError, UnauthorizedError } from '@shared/errors/app-error';
 import { UserRole, PaymentMethod, OrderStatus } from '@shared/constants';
 import { z } from 'zod';
+import crypto from 'crypto';
 
 const addressSchema = z.object({
   street: z.string().min(1, 'Street is required'),
@@ -117,6 +118,12 @@ export class OrderController {
       const orderId = req.params.id;
       const validatedBody = chargeSchema.parse(req.body);
 
+      // Only the order owner may pay for it (otherwise anyone could mark another user's order as failed)
+      const order = await orderService.getOrderDetails(orderId);
+      if (order.user.toString() !== req.authUser!.id) {
+        throw new ForbiddenError('You do not have permission to pay for this order.');
+      }
+
       const result = await paymentService.chargeCard(orderId, validatedBody);
 
       if (result.status === 'success') {
@@ -140,6 +147,18 @@ export class OrderController {
   // Payment Webhook (Stripe mock)
   public async webhook(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      // The webhook is publicly routable, so require the shared secret; without it anyone could mark orders as paid
+      const secret = process.env.STRIPE_WEBHOOK_SECRET;
+      const provided = req.headers['x-webhook-secret'];
+      if (
+        !secret ||
+        typeof provided !== 'string' ||
+        provided.length !== secret.length ||
+        !crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(secret))
+      ) {
+        throw new UnauthorizedError('Invalid webhook signature');
+      }
+
       await paymentService.processPaymentWebhook(req.body);
       res.status(200).json({ received: true });
     } catch (error) {

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # 3. Central API Gateway
   api-gateway:
@@ -103,9 +101,11 @@ services:
       - REDIS_ENABLED=true
       - CART_SERVICE_URL=http://cart-service:5003
       - CATALOG_SERVICE_URL=http://catalog-service:5002
+      - AUTH_SERVICE_URL=http://auth-service:5001
       - CLIENT_URL=http://api-gateway:5000
       - NODE_OPTIONS=--max-old-space-size=128
     depends_on:
+      - auth-service
       - catalog-service
       - cart-service
     restart: always

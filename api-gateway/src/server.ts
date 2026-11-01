@@ -11,6 +11,12 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Set TRUST_PROXY (e.g. "1") when the gateway sits behind a reverse proxy so req.ip is the real client IP
+if (process.env.TRUST_PROXY) {
+  const trustProxy = Number(process.env.TRUST_PROXY);
+  app.set('trust proxy', Number.isNaN(trustProxy) ? process.env.TRUST_PROXY : trustProxy);
+}
+
 // 1. Security Headers
 app.use(helmet());
 
@@ -42,21 +48,6 @@ app.use((req, _res, next) => {
   next();
 });
 
-// TEST ROUTE TO BYPASS HTTP-PROXY-MIDDLEWARE
-app.use('/api/test-login', express.json(), async (req, res) => {
-  try {
-    const response = await fetch('http://auth-service:5001/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body)
-    });
-    const text = await response.text();
-    res.status(response.status).send(text);
-  } catch (e) {
-    res.status(500).send('FETCH ERROR: ' + (e as Error).message);
-  }
-});
-
 // 5. Block Public Access to Internal APIs (Security Best Practice!)
 app.all('/api/internal/*', (_req, res) => {
   res.status(403).json({
@@ -73,32 +64,45 @@ const ORDER_URL = process.env.ORDER_SERVICE_URL || 'http://localhost:5004';
 const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:5005';
 const CONTENT_URL = process.env.CONTENT_SERVICE_URL || 'http://localhost:5006';
 
+const forwardTo = (target: string, prefix: string) =>
+  proxy(target, {
+    proxyReqPathResolver: (req: any) => prefix + req.url,
+    // Pass the real client IP so downstream rate limiters don't lump every user under the gateway's IP
+    proxyReqOptDecorator: (proxyReqOpts: any, srcReq: any) => {
+      proxyReqOpts.headers = proxyReqOpts.headers || {};
+      proxyReqOpts.headers['x-forwarded-for'] = srcReq.ip;
+      return proxyReqOpts;
+    },
+  });
+
 // Auth & User Service Proxy
-app.use('/api/auth', proxy(AUTH_URL, { proxyReqPathResolver: (req: any) => '/api/auth' + req.url }));
-app.use('/api/users', proxy(AUTH_URL, { proxyReqPathResolver: (req: any) => '/api/users' + req.url }));
+app.use('/api/auth', forwardTo(AUTH_URL, '/api/auth'));
+app.use('/api/users', forwardTo(AUTH_URL, '/api/users'));
 
 // Catalog & Product Service Proxy
-app.use('/api/products', proxy(CATALOG_URL, { proxyReqPathResolver: (req: any) => '/api/products' + req.url }));
-app.use('/api/categories', proxy(CATALOG_URL, { proxyReqPathResolver: (req: any) => '/api/categories' + req.url }));
-app.use('/api/deals', proxy(CATALOG_URL, { proxyReqPathResolver: (req: any) => '/api/deals' + req.url }));
-app.use('/api/inventory', proxy(CATALOG_URL, { proxyReqPathResolver: (req: any) => '/api/inventory' + req.url }));
+app.use('/api/products', forwardTo(CATALOG_URL, '/api/products'));
+app.use('/api/categories', forwardTo(CATALOG_URL, '/api/categories'));
+app.use('/api/deals', forwardTo(CATALOG_URL, '/api/deals'));
+app.use('/api/inventory', forwardTo(CATALOG_URL, '/api/inventory'));
 
 // Cart & Wishlist Service Proxy
-app.use('/api/cart', proxy(CART_URL, { proxyReqPathResolver: (req: any) => '/api/cart' + req.url }));
-app.use('/api/wishlist', proxy(CART_URL, { proxyReqPathResolver: (req: any) => '/api/wishlist' + req.url }));
-app.use('/api/coupons', proxy(CART_URL, { proxyReqPathResolver: (req: any) => '/api/coupons' + req.url }));
+app.use('/api/cart', forwardTo(CART_URL, '/api/cart'));
+app.use('/api/wishlist', forwardTo(CART_URL, '/api/wishlist'));
+app.use('/api/coupons', forwardTo(CART_URL, '/api/coupons'));
+app.use('/api/rewards', forwardTo(CART_URL, '/api/rewards'));
 
 // Order & Checkout Service Proxy
-app.use('/api/orders', proxy(ORDER_URL, { proxyReqPathResolver: (req: any) => '/api/orders' + req.url }));
-app.use('/api/payments', proxy(ORDER_URL, { proxyReqPathResolver: (req: any) => '/api/payments' + req.url }));
-app.use('/api/tracking', proxy(ORDER_URL, { proxyReqPathResolver: (req: any) => '/api/tracking' + req.url }));
+app.use('/api/orders', forwardTo(ORDER_URL, '/api/orders'));
+app.use('/api/payments', forwardTo(ORDER_URL, '/api/payments'));
+app.use('/api/tracking', forwardTo(ORDER_URL, '/api/tracking'));
+app.use('/api/admin/analytics', forwardTo(ORDER_URL, '/api/admin/analytics'));
 
 // Notification Service Proxy
-app.use('/api/notifications', proxy(NOTIFICATION_URL, { proxyReqPathResolver: (req: any) => '/api/notifications' + req.url }));
+app.use('/api/notifications', forwardTo(NOTIFICATION_URL, '/api/notifications'));
 
 // CMS & Blog Service Proxy
-app.use('/api/blogs', proxy(CONTENT_URL, { proxyReqPathResolver: (req: any) => '/api/blogs' + req.url }));
-app.use('/api/cms', proxy(CONTENT_URL, { proxyReqPathResolver: (req: any) => '/api/cms' + req.url }));
+app.use('/api/blogs', forwardTo(CONTENT_URL, '/api/blogs'));
+app.use('/api/cms', forwardTo(CONTENT_URL, '/api/cms'));
 
 // Unified Swagger Documentation Aggregator placeholder
 // (In Phase 7, we will configure this to fetch and display aggregated OpenAPIs)

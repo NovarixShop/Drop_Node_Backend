@@ -46,8 +46,9 @@ export const sendEmail = async (options: EmailOptions): Promise<void> => {
 };
 
 export const sendVerificationEmail = async (email: string, name: string, token: string): Promise<void> => {
-  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5000';
-  const verificationUrl = `${clientUrl}/api/auth/verify-email?token=${token}`;
+  // Link to the storefront page, which confirms the token with the API and shows the result
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const verificationUrl = `${frontendUrl}/verify-email?token=${token}`;
   
   await sendEmail({
     to: email,
@@ -63,8 +64,9 @@ export const sendVerificationEmail = async (email: string, name: string, token: 
 };
 
 export const sendPasswordResetEmail = async (email: string, name: string, token: string): Promise<void> => {
-  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5000';
-  const resetUrl = `${clientUrl}/api/auth/reset-password?token=${token}`;
+  // Resetting needs a form for the new password, so link to the storefront page rather than the API
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
 
   await sendEmail({
     to: email,

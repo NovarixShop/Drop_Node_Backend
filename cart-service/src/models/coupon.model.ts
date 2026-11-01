@@ -3,6 +3,7 @@ import { Schema, model, Document } from 'mongoose';
 export enum CouponDiscountType {
   PERCENTAGE = 'percentage',
   FIXED = 'fixed',
+  FREE_SHIPPING = 'free_shipping',
 }
 
 export interface ICoupon extends Document {
@@ -14,6 +15,9 @@ export interface ICoupon extends Document {
   usageLimit: number;
   usageCount: number;
   active: boolean;
+  // Reward coupons belong to the user who won them; admin coupons leave this unset
+  assignedTo?: string;
+  label?: string;
   isValid(orderAmount: number): boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -61,6 +65,14 @@ const CouponSchema = new Schema<ICoupon>(
     active: {
       type: Boolean,
       default: true,
+    },
+    assignedTo: {
+      type: String,
+      index: true,
+    },
+    label: {
+      type: String,
+      trim: true,
     },
   },
   {

@@ -9,6 +9,9 @@ import router from './routes';
 
 const app = express();
 
+// Services are only reachable through the API gateway, which sets X-Forwarded-For to the real client IP
+app.set('trust proxy', 1);
+
 app.use(helmet());
 app.use(cors({ origin: ['https://www.admin.com', 'https://cms.admin.com', 'https://admin.com', 'http://localhost:3000', 'http://localhost:3001'], credentials: true }));
 

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { dealRepository } from '../repositories/deal.repository';
 import { z } from 'zod';
+import { BadRequestError } from '@shared/errors/app-error';
 
 const createDealSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(50),
@@ -41,7 +42,7 @@ export class DealController {
       const validatedBody = createDealSchema.parse(req.body);
 
       if (validatedBody.endTime <= validatedBody.startTime) {
-        throw new Error('End time must be after start time');
+        throw new BadRequestError('End time must be after start time');
       }
 
       const deal = await dealRepository.create(validatedBody);

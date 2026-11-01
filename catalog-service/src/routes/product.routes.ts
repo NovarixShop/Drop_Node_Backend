@@ -14,6 +14,12 @@ router.get('/:id/reviews', productController.getReviews.bind(productController))
 router.post('/:id/reviews', protect, productController.submitReview.bind(productController));
 
 // Admin/Vendor: Manage products
+router.get(
+  '/:id',
+  protect,
+  restrictTo(UserRole.ADMIN, UserRole.VENDOR),
+  productController.getById.bind(productController)
+);
 router.post(
   '/',
   protect,

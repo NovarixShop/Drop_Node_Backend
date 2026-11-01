@@ -16,22 +16,23 @@ router.post('/products/reserve-stock', async (req: Request, res: Response): Prom
   const reservedItems: Array<{ productId: string; quantity: number }> = [];
   try {
     for (const item of items) {
-      const product = await productRepository.findById(item.productId);
-      if (!product) {
-        throw new Error(`Product not found: ${item.productId}`);
-      }
-      if (product.stock < item.quantity) {
-        throw new Error(`Out of stock: Product "${product.name}" only has ${product.stock} units available, but ${item.quantity} were requested.`);
+      if (!Number.isInteger(item.quantity) || item.quantity < 1) {
+        throw new Error(`Invalid quantity for product: ${item.productId}`);
       }
 
-      // Atomically deduct stock
-      const updated = await productRepository.adjustStock(item.productId, -item.quantity);
-      if (!updated || updated.stock < 0) {
-        // Rollback this item's deduction immediately if stock somehow dipped negative (double check)
-        if (updated) {
-          await productRepository.adjustStock(item.productId, item.quantity);
-        }
-        throw new Error(`Out of stock (race condition): Product "${product.name}"`);
+      const product = await productRepository.findById(item.productId);
+      if (!product || !product.isActive) {
+        throw new Error(`Product not found or inactive: ${item.productId}`);
+      }
+
+      // Atomically deduct stock only if enough is available, so concurrent checkouts can't oversell
+      const updated = await Product.findOneAndUpdate(
+        { _id: item.productId, stock: { $gte: item.quantity } },
+        { $inc: { stock: -item.quantity } },
+        { new: true }
+      ).exec();
+      if (!updated) {
+        throw new Error(`Out of stock: Product "${product.name}" only has ${product.stock} units available, but ${item.quantity} were requested.`);
       }
 
       reservedItems.push(item);
@@ -78,7 +79,20 @@ router.post('/products/release-stock', async (req: Request, res: Response, next:
   }
 });
 
-// 3. Bulk fetch product details by IDs (Internal REST call)
+// 3. Count active products for the admin analytics dashboard (Internal REST call)
+router.get('/products/count', async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const products = await Product.countDocuments({ isActive: true }).exec();
+    res.status(200).json({
+      status: 'success',
+      data: { products },
+    });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// 4. Bulk fetch product details by IDs (Internal REST call)
 router.post('/products/bulk', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   const { productIds } = req.body as { productIds: string[] };
 

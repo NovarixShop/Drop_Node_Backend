@@ -26,6 +26,11 @@ export const globalErrorHandler = (
     error = new ValidationError(formattedErrors);
   }
 
+  // Handle malformed JSON request bodies (rejected by express.json)
+  if ((err as any).type === 'entity.parse.failed') {
+    error = new AppError('Malformed JSON in request body', 400);
+  }
+
   // Handle Mongoose duplicate key error
   if ((err as any).code === 11000) {
     const field = Object.keys((err as any).keyValue)[0];

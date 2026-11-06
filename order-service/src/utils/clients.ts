@@ -1,5 +1,6 @@
 import { logger } from '@shared/utils/logger';
 import { BadRequestError } from '@shared/errors/app-error';
+import { internalHeaders } from '@shared/middlewares/internal.middleware';
 
 export class CartClient {
   private baseUrl: string;
@@ -11,7 +12,7 @@ export class CartClient {
   // Fetch user's cart from Cart Service
   public async getCart(userId: string): Promise<any | null> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/internal/cart/${userId}`);
+      const response = await fetch(`${this.baseUrl}/api/internal/cart/${userId}`, { headers: internalHeaders() });
       if (!response.ok) {
         if (response.status === 404) return null;
         const errText = await response.text();
@@ -30,7 +31,7 @@ export class CartClient {
     try {
       const response = await fetch(`${this.baseUrl}/api/internal/cart/${userId}/clear`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalHeaders({ 'Content-Type': 'application/json' }),
       });
       if (!response.ok) {
         const errText = await response.text();
@@ -53,7 +54,7 @@ export class CatalogClient {
   public async reserveStock(items: Array<{ productId: string; quantity: number }>): Promise<void> {
     const response = await fetch(`${this.baseUrl}/api/internal/products/reserve-stock`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: internalHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ items }),
     });
 
@@ -72,7 +73,7 @@ export class CatalogClient {
     try {
       const response = await fetch(`${this.baseUrl}/api/internal/products/release-stock`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ items }),
       });
 
@@ -92,7 +93,7 @@ export const catalogClient = new CatalogClient();
 // Fetch a count from another service's internal endpoint; analytics degrade to 0 rather than failing the dashboard
 const fetchInternalCount = async (url: string, field: string): Promise<number> => {
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { headers: internalHeaders() });
     if (!response.ok) {
       logger.error(`[InternalCount] ${url} returned status ${response.status}`);
       return 0;

@@ -1,4 +1,5 @@
 import { logger } from '@shared/utils/logger';
+import { internalHeaders } from '@shared/middlewares/internal.middleware';
 
 export interface ICatalogProduct {
   _id: string;
@@ -40,9 +41,7 @@ export class CatalogClient {
     try {
       const response = await fetch(`${this.baseUrl}/api/internal/products/bulk`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: internalHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ productIds: uniqueIds }),
       });
 

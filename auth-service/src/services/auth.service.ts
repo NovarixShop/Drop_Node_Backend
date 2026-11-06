@@ -133,6 +133,12 @@ export class AuthService {
       throw new UnauthorizedError('Invalid Google Token');
     }
 
+    // A Google account can carry an email address its owner never proved they control.
+    // Linking on such an email would let anyone sign in to an existing account here.
+    if (payload.email_verified !== true) {
+      throw new UnauthorizedError('Your Google email address is not verified.');
+    }
+
     const { email, name } = payload;
     let user = await this.userRepo.findByEmail(email, '+refreshToken');
     
@@ -242,8 +248,8 @@ export class AuthService {
       throw new BadRequestError('Token and new password are required');
     }
 
-    if (password.length < 6) {
-      throw new BadRequestError('Password must be at least 6 characters');
+    if (password.length < 8 || password.length > 128) {
+      throw new BadRequestError('Password must be between 8 and 128 characters');
     }
 
     const hashedToken = crypto.createHash('sha256').update(token).digest('hex');

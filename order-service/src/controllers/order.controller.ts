@@ -2,10 +2,9 @@ import { Request, Response, NextFunction } from 'express';
 import { orderService } from '../services/order.service';
 import { paymentService } from '../services/payment.service';
 import { trackingService } from '../services/tracking.service';
-import { ForbiddenError, UnauthorizedError } from '@shared/errors/app-error';
+import { ForbiddenError } from '@shared/errors/app-error';
 import { UserRole, PaymentMethod, OrderStatus } from '@shared/constants';
 import { z } from 'zod';
-import crypto from 'crypto';
 
 const addressSchema = z.object({
   street: z.string().min(1, 'Street is required'),
@@ -21,11 +20,13 @@ const checkoutSchema = z.object({
   billingAddress: addressSchema.optional(),
 });
 
-const chargeSchema = z.object({
-  cardNumber: z.string().regex(/^\d{16}$/, 'Card number must be exactly 16 digits'),
-  expMonth: z.string().regex(/^(0[1-9]|1[0-2])$/, 'Expiration month must be MM format (01-12)'),
-  expYear: z.string().regex(/^\d{4}$/, 'Expiration year must be YYYY format'),
-  cvc: z.string().regex(/^\d{3,4}$/, 'CVC must be 3 or 4 digits'),
+// Razorpay Checkout collects the card itself, so no PAN/CVC ever reaches this service.
+// These are the three opaque handles the widget returns to the browser.
+const verifyPaymentSchema = z.object({
+  orderId: z.string().min(1, 'orderId is required'),
+  razorpay_order_id: z.string().min(1, 'razorpay_order_id is required'),
+  razorpay_payment_id: z.string().min(1, 'razorpay_payment_id is required'),
+  razorpay_signature: z.string().min(1, 'razorpay_signature is required'),
 });
 
 const updateStatusSchema = z.object({
@@ -113,53 +114,69 @@ export class OrderController {
   }
 
   // Charge order payment (Simulate Stripe)
-  public async charge(req: Request, res: Response, next: NextFunction): Promise<void> {
+  // Step 1: open a Razorpay order for an existing order, so the browser can launch Checkout.
+  public async createRazorpayOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const orderId = req.params.id;
-      const validatedBody = chargeSchema.parse(req.body);
 
-      // Only the order owner may pay for it (otherwise anyone could mark another user's order as failed)
+      // Only the order owner may pay for it.
       const order = await orderService.getOrderDetails(orderId);
       if (order.user.toString() !== req.authUser!.id) {
         throw new ForbiddenError('You do not have permission to pay for this order.');
       }
 
-      const result = await paymentService.chargeCard(orderId, validatedBody);
+      const session = await paymentService.createPaymentOrder(orderId);
 
-      if (result.status === 'success') {
-        res.status(200).json({
-          status: 'success',
-          message: 'Payment details captured. Awaiting settlement.',
-          data: result,
-        });
-      } else {
-        res.status(402).json({
-          status: 'error',
-          message: 'Payment failed: Card was declined.',
-          data: result,
-        });
-      }
+      res.status(201).json({
+        status: 'success',
+        message: 'Payment session created.',
+        data: session,
+      });
     } catch (error) {
       next(error);
     }
   }
 
-  // Payment Webhook (Stripe mock)
-  public async webhook(req: Request, res: Response, next: NextFunction): Promise<void> {
+  // Step 2: confirm what Checkout handed back, then release the order.
+  public async verifyRazorpayPayment(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      // The webhook is publicly routable, so require the shared secret; without it anyone could mark orders as paid
-      const secret = process.env.STRIPE_WEBHOOK_SECRET;
-      const provided = req.headers['x-webhook-secret'];
-      if (
-        !secret ||
-        typeof provided !== 'string' ||
-        provided.length !== secret.length ||
-        !crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(secret))
-      ) {
-        throw new UnauthorizedError('Invalid webhook signature');
+      const body = verifyPaymentSchema.parse(req.body);
+
+      const order = await orderService.getOrderDetails(body.orderId);
+      if (order.user.toString() !== req.authUser!.id) {
+        throw new ForbiddenError('You do not have permission to pay for this order.');
       }
 
-      await paymentService.processPaymentWebhook(req.body);
+      const result = await paymentService.verifyPayment({
+        orderId: body.orderId,
+        razorpayOrderId: body.razorpay_order_id,
+        razorpayPaymentId: body.razorpay_payment_id,
+        signature: body.razorpay_signature,
+      });
+
+      res.status(200).json({
+        status: 'success',
+        message: 'Payment verified. Your order is confirmed.',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Razorpay webhook. Publicly routable, so the signature over the RAW body is the only
+  // thing that authorises it (see express.raw() for this path in app.ts).
+  public async webhook(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const signature = req.headers['x-razorpay-signature'];
+      const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
+
+      await paymentService.handleWebhook(
+        rawBody,
+        typeof signature === 'string' ? signature : undefined
+      );
+
+      // Always 200 once accepted, otherwise Razorpay retries a payload we have already processed.
       res.status(200).json({ received: true });
     } catch (error) {
       next(error);

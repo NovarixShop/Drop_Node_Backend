@@ -32,6 +32,12 @@ export class OrderRepository {
   }
 
   // Update order status or details
+  // Razorpay webhooks identify an order only by the gateway order id we stored at
+  // checkout, so the reconciliation path needs this lookup.
+  public async findByRazorpayOrderId(razorpayOrderId: string): Promise<IOrder | null> {
+    return Order.findOne({ 'paymentDetails.razorpayOrderId': razorpayOrderId }).exec();
+  }
+
   public async update(id: string, updateData: Partial<IOrder>): Promise<IOrder | null> {
     return Order.findByIdAndUpdate(id, updateData, {
       new: true,

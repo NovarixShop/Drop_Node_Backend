@@ -7,7 +7,8 @@ class RedisCacheService {
   private isConnected = false;
 
   constructor() {
-    const enabled = process.env.REDIS_ENABLED === 'true' || true;
+    // On by default; REDIS_ENABLED=false switches to the in-memory fallback (it used to be ignored)
+    const enabled = process.env.REDIS_ENABLED !== 'false';
     const url = process.env.REDIS_URL || 'redis://localhost:6379';
 
     if (enabled) {

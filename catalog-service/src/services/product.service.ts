@@ -7,6 +7,7 @@ import { BadRequestError, NotFoundError } from '@shared/errors/app-error';
 import { redisCache } from '../config/redis.config';
 import { logger } from '@shared/utils/logger';
 import { Category } from '../models/category.model';
+import { Product } from '../models/product.model';
 import { isValidObjectId } from 'mongoose';
 
 const PRODUCT_CACHE_PREFIX = 'products:slug:';
@@ -85,6 +86,64 @@ export class ProductService {
       throw new NotFoundError('Product not found');
     }
     return product;
+  }
+
+  // "Similar products" for the product page: other active products from the same category first
+  // (in-stock, best rated, then newest), topped up from the parent/sibling categories when the
+  // category itself has too few products.
+  public async getSimilarProducts(id: string, limitParam?: string): Promise<IProduct[]> {
+    if (!isValidObjectId(id)) {
+      throw new NotFoundError('Product not found');
+    }
+
+    const limit = Math.min(Math.max(parseInt(limitParam || '12', 10) || 12, 1), 24);
+
+    const product = await Product.findById(id).select('category').lean().exec();
+    if (!product || !product.category) {
+      throw new NotFoundError('Product not found');
+    }
+
+    const categoryId = product.category.toString();
+    const fields = 'name slug price compareAtPrice images stock averageRating totalReviews category';
+    const sort = { averageRating: -1 as const, totalReviews: -1 as const, createdAt: -1 as const };
+
+    const findIn = (categoryIds: string[], excludeIds: string[], inStockOnly: boolean, max: number) =>
+      Product.find({
+        _id: { $nin: excludeIds },
+        category: { $in: categoryIds },
+        isActive: true,
+        ...(inStockOnly ? { stock: { $gt: 0 } } : {}),
+      })
+        .select(fields)
+        .sort(sort)
+        .limit(max)
+        .populate('category', 'name slug')
+        .lean()
+        .exec();
+
+    const results: any[] = [];
+    const seen = (): string[] => [id, ...results.map((p) => p._id.toString())];
+
+    // 1. Same category, in stock
+    results.push(...(await findIn([categoryId], seen(), true, limit)));
+
+    // 2. Related categories (parent + siblings + children), in stock
+    if (results.length < limit) {
+      const category = await Category.findById(categoryId).select('parentCategory').lean().exec();
+      const rootId = category?.parentCategory ? category.parentCategory.toString() : categoryId;
+      const familyIds = (await this.getCategoryFamilyIds(rootId)).filter((cid) => cid !== categoryId);
+      if (familyIds.length > 0) {
+        results.push(...(await findIn(familyIds, seen(), true, limit - results.length)));
+      }
+    }
+
+    // 3. Same category, out of stock (still useful to show, like big marketplaces do)
+    if (results.length < limit) {
+      results.push(...(await findIn([categoryId], seen(), false, limit - results.length)));
+    }
+
+    // Listing cards only need the first two images (main + hover image)
+    return results.map((p) => ({ ...p, images: (p.images || []).slice(0, 2) })) as IProduct[];
   }
 
   // Update a product
@@ -251,8 +310,13 @@ export class ProductService {
     productId: string,
     query: { page?: string; limit?: string }
   ): Promise<{ reviews: IReview[]; total: number; page: number; pages: number }> {
-    const page = parseInt(query.page || '1', 10);
-    const limit = parseInt(query.limit || '5', 10);
+    if (!isValidObjectId(productId)) {
+      throw new NotFoundError('Product not found');
+    }
+
+    // Keep page/limit in range: ?limit=0 or ?page=-1 used to error, and a huge limit returned every review
+    const page = Math.max(parseInt(query.page || '1', 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(query.limit || '5', 10) || 5, 1), 50);
     const skip = (page - 1) * limit;
 
     const { reviews, total } = await this.reviewRepo.findAndCount({ product: productId }, skip, limit);

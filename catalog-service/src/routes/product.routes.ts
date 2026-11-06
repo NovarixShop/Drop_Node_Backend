@@ -9,6 +9,7 @@ const router = Router();
 router.get('/', productController.getProducts.bind(productController));
 router.get('/slug/:slug', productController.getBySlug.bind(productController));
 router.get('/:id/reviews', productController.getReviews.bind(productController));
+router.get('/:id/similar', productController.getSimilar.bind(productController));
 
 // Protected: Customer submitting reviews
 router.post('/:id/reviews', protect, productController.submitReview.bind(productController));

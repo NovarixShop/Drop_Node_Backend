@@ -3,18 +3,27 @@ import { productService } from '../services/product.service';
 import { z } from 'zod';
 
 // Zod schemas for input validation
-const createProductSchema = z.object({
+const productFields = {
   name: z.string().min(2, 'Product name must be at least 2 characters').max(100),
   description: z.string().min(10, 'Description must be at least 10 characters').max(2000),
   price: z.coerce.number().positive('Price must be a positive number'),
   compareAtPrice: z.coerce.number().positive('Compare-at price must be positive').optional(),
   category: z.string().min(1, 'Category ID is required'),
-  images: z.array(z.string()).optional().default([]),
-  stock: z.coerce.number().nonnegative('Stock cannot be negative').optional().default(0),
-  lowStockThreshold: z.coerce.number().nonnegative('Threshold cannot be negative').optional().default(5),
+  images: z.array(z.string()),
+  stock: z.coerce.number().nonnegative('Stock cannot be negative'),
+  lowStockThreshold: z.coerce.number().nonnegative('Threshold cannot be negative'),
+};
+
+// Zod 4 applies .default() even inside .partial(), so an update schema built from the create schema would
+// silently reset omitted fields (e.g. images -> [], stock -> 0). Updates therefore use the default-free fields.
+const createProductSchema = z.object({
+  ...productFields,
+  images: productFields.images.default([]),
+  stock: productFields.stock.default(0),
+  lowStockThreshold: productFields.lowStockThreshold.default(5),
 });
 
-const updateProductSchema = createProductSchema.partial();
+const updateProductSchema = z.object(productFields).partial();
 
 const submitReviewSchema = z.object({
   rating: z.coerce.number().int().min(1, 'Rating must be between 1 and 5').max(5, 'Rating must be between 1 and 5'),

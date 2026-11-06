@@ -143,3 +143,6 @@ vite.config.ts.timestamp-*
 .vite/
 .env
 .env
+
+# Uploaded product images (local dev); production stores them in the product_uploads Docker volume
+uploads/

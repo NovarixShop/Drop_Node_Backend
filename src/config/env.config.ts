@@ -10,20 +10,14 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   API_PREFIX: z.string().default('/api'),
   
-  MONGODB_URI: z.string({
-    required_error: 'MONGODB_URI environment variable is required',
-  }),
+  MONGODB_URI: z.string({ error: 'MONGODB_URI environment variable is required' }),
   
   REDIS_URL: z.string().default('redis://localhost:6379'),
   REDIS_ENABLED: z.coerce.boolean().default(true),
   
-  JWT_SECRET: z.string({
-    required_error: 'JWT_SECRET is required',
-  }),
+  JWT_SECRET: z.string({ error: 'JWT_SECRET is required' }),
   JWT_EXPIRES_IN: z.string().default('15m'),
-  JWT_REFRESH_SECRET: z.string({
-    required_error: 'JWT_REFRESH_SECRET is required',
-  }),
+  JWT_REFRESH_SECRET: z.string({ error: 'JWT_REFRESH_SECRET is required' }),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   
   EMAIL_HOST: z.string().default('smtp.mailtrap.io'),

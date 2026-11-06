@@ -16,7 +16,7 @@ export const globalErrorHandler = (
   // Handle Zod Schema Validation Errors
   if (err instanceof ZodError) {
     const formattedErrors: Record<string, string[]> = {};
-    err.errors.forEach((issue) => {
+    err.issues.forEach((issue) => {
       const field = issue.path.join('.');
       if (!formattedErrors[field]) {
         formattedErrors[field] = [];
@@ -29,6 +29,11 @@ export const globalErrorHandler = (
   // Handle malformed JSON request bodies (rejected by express.json)
   if ((err as any).type === 'entity.parse.failed') {
     error = new AppError('Malformed JSON in request body', 400);
+  }
+
+  // Request body over the route's size limit (express.json / express.raw)
+  if ((err as any).type === 'entity.too.large') {
+    error = new AppError('Request body is too large', 413);
   }
 
   // Handle Mongoose duplicate key error

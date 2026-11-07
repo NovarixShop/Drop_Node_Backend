@@ -34,7 +34,18 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     steps:
+      - name: Verify Hostinger Secrets Configured
+        id: check_secrets
+        run: |
+          if [ -z "${{ secrets.HOSTINGER_SSH_HOST }}" ] || [ -z "${{ secrets.HOSTINGER_SSH_KEY }}" ]; then
+            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "::warning title=Hostinger Secrets Pending::HOSTINGER_SSH_HOST or HOSTINGER_SSH_KEY secret is not yet set in repository Settings -> Secrets and variables -> Actions. Skipping VPS deployment."
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Deploy to Hostinger VPS via SSH
+        if: steps.check_secrets.outputs.configured == 'true'
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.HOSTINGER_SSH_HOST }}

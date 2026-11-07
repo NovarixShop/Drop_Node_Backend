@@ -70,6 +70,12 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             
+            # Ensure .env.local exists so docker-compose doesn't fail
+            if [ ! -f ".env.local" ]; then
+              echo "⚠️ .env.local not found on VPS. Initializing from .env.example..."
+              cp .env.example .env.local
+            fi
+            
             # Rebuild and restart Docker containers if docker-compose exists
             if [ -f "docker-compose.yml" ]; then
               echo "🐳 Rebuilding and restarting Docker containers..."

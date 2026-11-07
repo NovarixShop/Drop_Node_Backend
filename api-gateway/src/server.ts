@@ -9,6 +9,7 @@ import path from 'path';
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
+app.disable('x-powered-by');
 const PORT = process.env.PORT || 5000;
 
 // Set TRUST_PROXY (e.g. "1") when the gateway sits behind a reverse proxy so req.ip is the real client IP
@@ -21,9 +22,22 @@ if (process.env.TRUST_PROXY) {
 app.use(helmet());
 
 // 2. CORS Policies
-const allowedOrigins = process.env.CORS_ORIGINS 
-  ? process.env.CORS_ORIGINS.split(',') 
-  : ['http://localhost:3000', 'http://localhost:3001', 'https://www.admin.com', 'https://cms.admin.com', 'https://admin.com'];
+// CORS_ORIGINS = comma-separated list of the storefront and CMS origins, e.g.
+//   https://shop.example.com,https://admin.example.com
+// Production refuses to start without it. (The old fallback list contained third-party domains such as
+// admin.com, which would have been allowed to make credentialed requests.)
+const allowedOrigins = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+
+if (allowedOrigins.length === 0) {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('❌ [Gateway] CORS_ORIGINS must be set in production (e.g. https://shop.example.com,https://admin.example.com)');
+    process.exit(1);
+  }
+  allowedOrigins.push('http://localhost:3000', 'http://localhost:3001');
+}
 
 app.use(
   cors({
@@ -31,6 +45,51 @@ app.use(
     credentials: true,
   })
 );
+
+// Microservice locations and the shared proxy factory
+const AUTH_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:5001';
+const CATALOG_URL = process.env.CATALOG_SERVICE_URL || 'http://localhost:5002';
+const CART_URL = process.env.CART_SERVICE_URL || 'http://localhost:5003';
+const ORDER_URL = process.env.ORDER_SERVICE_URL || 'http://localhost:5004';
+const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:5005';
+const CONTENT_URL = process.env.CONTENT_SERVICE_URL || 'http://localhost:5006';
+
+const forwardTo = (target: string, prefix: string, options: { limit?: string; crossOriginResource?: boolean } = {}) =>
+  proxy(target, {
+    limit: options.limit || '1mb',
+    proxyReqPathResolver: (req: any) => prefix + req.url,
+    // Pass the real client IP so downstream rate limiters don't lump every user under the gateway's IP,
+    // plus the public protocol/host so services can build absolute links (e.g. uploaded image URLs)
+    proxyReqOptDecorator: (proxyReqOpts: any, srcReq: any) => {
+      proxyReqOpts.headers = proxyReqOpts.headers || {};
+      proxyReqOpts.headers['x-forwarded-for'] = srcReq.ip;
+      proxyReqOpts.headers['x-forwarded-proto'] = srcReq.protocol;
+      proxyReqOpts.headers['x-forwarded-host'] = srcReq.get('host');
+      // Never forward a client-supplied service-to-service key
+      delete proxyReqOpts.headers['x-internal-key'];
+      return proxyReqOpts;
+    },
+    // The gateway owns CORS. These headers are the merged response headers (gateway + service), so drop all
+    // CORS headers a service may have sent, then re-apply the gateway's own allow-list decision.
+    userResHeaderDecorator: (headers: any, userReq: any) => {
+      for (const name of Object.keys(headers)) {
+        if (name.toLowerCase().startsWith('access-control-')) delete headers[name];
+      }
+      const origin = userReq.headers.origin;
+      if (origin && allowedOrigins.includes(origin)) {
+        headers['access-control-allow-origin'] = origin;
+        headers['access-control-allow-credentials'] = 'true';
+        headers['vary'] = headers['vary'] ? `${headers['vary']}, Origin` : 'Origin';
+      }
+      // Files embedded by the storefront/CMS (other origins) need a cross-origin resource policy
+      if (options.crossOriginResource) headers['cross-origin-resource-policy'] = 'cross-origin';
+      return headers;
+    },
+  });
+
+// Product images: proxied before the rate limiter, because one product grid loads dozens of images and
+// would otherwise exhaust a visitor's API budget. Uploading still requires an admin token downstream.
+app.use('/api/uploads', forwardTo(CATALOG_URL, '/api/uploads', { limit: '11mb', crossOriginResource: true }));
 
 // 3. Global Rate Limiting
 const limiter = rateLimit({
@@ -57,24 +116,6 @@ app.all('/api/internal/*', (_req, res) => {
 });
 
 // 6. Microservices Routing Proxies
-const AUTH_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:5001';
-const CATALOG_URL = process.env.CATALOG_SERVICE_URL || 'http://localhost:5002';
-const CART_URL = process.env.CART_SERVICE_URL || 'http://localhost:5003';
-const ORDER_URL = process.env.ORDER_SERVICE_URL || 'http://localhost:5004';
-const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:5005';
-const CONTENT_URL = process.env.CONTENT_SERVICE_URL || 'http://localhost:5006';
-
-const forwardTo = (target: string, prefix: string) =>
-  proxy(target, {
-    proxyReqPathResolver: (req: any) => prefix + req.url,
-    // Pass the real client IP so downstream rate limiters don't lump every user under the gateway's IP
-    proxyReqOptDecorator: (proxyReqOpts: any, srcReq: any) => {
-      proxyReqOpts.headers = proxyReqOpts.headers || {};
-      proxyReqOpts.headers['x-forwarded-for'] = srcReq.ip;
-      return proxyReqOpts;
-    },
-  });
-
 // Auth & User Service Proxy
 app.use('/api/auth', forwardTo(AUTH_URL, '/api/auth'));
 app.use('/api/users', forwardTo(AUTH_URL, '/api/users'));
@@ -118,6 +159,11 @@ app.get('/api/health', (_req, res) => {
     service: 'api-gateway',
     message: 'API Gateway is online and routing traffic.',
   });
+});
+
+// 8. JSON 404 for anything not routed above
+app.use((req, res) => {
+  res.status(404).json({ status: 'error', message: `Cannot find ${req.method} ${req.path}` });
 });
 
 app.listen(PORT, () => {

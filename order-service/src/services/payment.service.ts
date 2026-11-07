@@ -1,135 +1,305 @@
-import { orderRepository } from '../repositories/order.repository';
-import { PaymentStatus, OrderStatus } from '@shared/constants';
-import { BadRequestError, NotFoundError } from '@shared/errors/app-error';
-import { logger } from '@shared/utils/logger';
 import crypto from 'crypto';
+import { orderRepository } from '../repositories/order.repository';
+import { PaymentStatus, OrderStatus, PaymentMethod } from '@shared/constants';
+import { AppError, BadRequestError, NotFoundError } from '@shared/errors/app-error';
+import { logger } from '@shared/utils/logger';
+import {
+  razorpayConfig,
+  razorpayRequest,
+  isRazorpayConfigured,
+  isRazorpayWebhookConfigured,
+} from '../config/razorpay.config';
+
+/** Razorpay amounts are in the currency's smallest unit (paise for INR). */
+const toMinorUnits = (amount: number): number => Math.round(amount * 100);
+
+interface RazorpayOrder {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+}
+
+interface RazorpayPayment {
+  id: string;
+  order_id: string;
+  status: 'created' | 'authorized' | 'captured' | 'refunded' | 'failed';
+  amount: number;
+  currency: string;
+  method?: string;
+  card?: { network?: string; last4?: string };
+  bank?: string;
+  wallet?: string;
+  vpa?: string;
+  email?: string;
+  contact?: string;
+  error_description?: string;
+}
+
+/**
+ * order.paymentDetails is declared as `Map` in the schema, so mongoose hands back a Map
+ * instance, not a plain object. Spreading a Map with `...` yields `{}` and reading
+ * `details.someKey` yields undefined, so both must go through here.
+ */
+const readPaymentDetails = (details: unknown): Record<string, unknown> => {
+  if (!details) return {};
+  if (details instanceof Map) return Object.fromEntries(details as Map<string, unknown>);
+  return { ...(details as Record<string, unknown>) };
+};
+
+/** Equal-length, constant-time comparison of two hex signatures. */
+const signaturesMatch = (expected: string, provided: string): boolean => {
+  const a = Buffer.from(expected, 'utf8');
+  const b = Buffer.from(provided, 'utf8');
+  // timingSafeEqual throws on a length mismatch, which would itself leak length info.
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
 
 export class PaymentService {
-  // Simulate charging a card via Stripe
-  public async chargeCard(
-    orderId: string,
-    cardDetails: {
-      cardNumber: string;
-      expMonth: string;
-      expYear: string;
-      cvc: string;
+  /**
+   * Step 1 of checkout: create the Razorpay order the browser's Checkout widget opens.
+   *
+   * Returns only what the browser legitimately needs. The amount comes from the order we
+   * already stored, never from the client, so a tampered page cannot pay less than the total.
+   */
+  public async createPaymentOrder(orderId: string): Promise<{
+    keyId: string;
+    razorpayOrderId: string;
+    amount: number;
+    currency: string;
+    orderId: string;
+  }> {
+    if (!isRazorpayConfigured()) {
+      throw new AppError(
+        'Online payment is temporarily unavailable. Please choose Cash on Delivery.',
+        503
+      );
     }
-  ): Promise<{ transactionId: string; status: 'success' | 'failed' }> {
+
     const order = await orderRepository.findById(orderId);
-    if (!order) {
-      throw new NotFoundError('Order not found');
-    }
+    if (!order) throw new NotFoundError('Order not found');
 
     if (order.paymentStatus === PaymentStatus.PAID) {
       throw new BadRequestError('Order is already paid');
     }
-
     if (order.orderStatus === OrderStatus.CANCELLED) {
       throw new BadRequestError('Cannot pay for a cancelled order');
     }
-
-    logger.info(`💳 [Stripe Mock] Charging card for order: ${orderId}, amount: $${order.totals.grandTotal}`);
-
-    const { cardNumber } = cardDetails;
-    
-    // Simulate declined card if number ends in '0000'
-    const isDeclined = cardNumber.endsWith('0000');
-
-    if (isDeclined) {
-      logger.warn(`💳 [Stripe Mock] Card declined for order: ${orderId}`);
-      
-      order.paymentStatus = PaymentStatus.FAILED;
-      order.statusHistory.push({
-        status: order.orderStatus,
-        timestamp: new Date(),
-        note: 'Payment attempt failed: Card was declined.',
-      });
-      await order.save();
-
-      return {
-        transactionId: 'txn_declined_' + crypto.randomBytes(8).toString('hex'),
-        status: 'failed',
-      };
+    if (order.paymentMethod === PaymentMethod.COD) {
+      throw new BadRequestError('This order is set to Cash on Delivery');
     }
 
-    const transactionId = 'ch_stripe_' + crypto.randomBytes(12).toString('hex');
-    
-    // Asynchronously process the webhook to simulate the Stripe callback
-    setTimeout(async () => {
-      try {
-        await this.processPaymentWebhook({
-          type: 'charge.succeeded',
-          data: {
-            object: {
-              id: transactionId,
-              amount: Math.round(order.totals.grandTotal * 100),
-              orderId: order.id,
-              payment_method_details: {
-                card: {
-                  brand: 'visa',
-                  last4: cardNumber.slice(-4),
-                },
-              },
-            },
-          },
-        });
-      } catch (err) {
-        logger.error('Error processing mock payment webhook:', err);
-      }
-    }, 1000);
+    const amount = toMinorUnits(order.totals.grandTotal);
+    if (amount < 100) {
+      // Razorpay rejects anything under 1.00 in the account currency.
+      throw new BadRequestError('Order total is below the minimum amount this gateway accepts');
+    }
+
+    const razorpayOrder = await razorpayRequest<RazorpayOrder>('/orders', {
+      method: 'POST',
+      body: {
+        amount,
+        currency: razorpayConfig.currency,
+        // Our own id, so a Razorpay dashboard entry can be traced back to an order.
+        receipt: order.id,
+        notes: { orderId: order.id },
+      },
+    });
+
+    order.paymentDetails = {
+      ...readPaymentDetails(order.paymentDetails),
+      provider: 'razorpay',
+      razorpayOrderId: razorpayOrder.id,
+      amountMinor: amount,
+      currency: razorpayOrder.currency,
+    } as never;
+    await order.save();
+
+    logger.info(
+      `💳 [Razorpay] Created gateway order ${razorpayOrder.id} for order ${order.id} (${amount} ${razorpayOrder.currency} minor units)`
+    );
 
     return {
-      transactionId,
-      status: 'success',
+      keyId: razorpayConfig.keyId,
+      razorpayOrderId: razorpayOrder.id,
+      amount,
+      currency: razorpayOrder.currency,
+      orderId: order.id,
     };
   }
 
-  // Handle mock Stripe webhook events
-  public async processPaymentWebhook(event: {
-    type: string;
-    data: { object: Record<string, any> };
-  }): Promise<void> {
-    const { type, data } = event;
-    logger.info(`🔌 [Webhook Mock] Received Stripe event: ${type}`);
-
-    if (type === 'charge.succeeded') {
-      const charge = data.object;
-      const orderId = charge.orderId;
-
-      const order = await orderRepository.findById(orderId);
-      if (!order) {
-        logger.error(`❌ [Webhook Mock] Order not found for webhook ID: ${orderId}`);
-        return;
-      }
-
-      if (order.paymentStatus === PaymentStatus.PAID) {
-        logger.info(`🔌 [Webhook Mock] Order ${orderId} is already marked as Paid. Skipping.`);
-        return;
-      }
-
-      if (order.orderStatus === OrderStatus.CANCELLED) {
-        logger.warn(`🔌 [Webhook Mock] Order ${orderId} was cancelled before payment settled. Skipping.`);
-        return;
-      }
-
-      order.paymentStatus = PaymentStatus.PAID;
-      order.orderStatus = OrderStatus.PROCESSING;
-      order.paymentDetails = {
-        transactionId: charge.id,
-        cardBrand: charge.payment_method_details?.card?.brand || 'unknown',
-        cardLast4: charge.payment_method_details?.card?.last4 || '0000',
-        paidAt: new Date().toISOString(),
-      };
-      
-      order.statusHistory.push({
-        status: OrderStatus.PROCESSING,
-        timestamp: new Date(),
-        note: `Payment successful. Transaction ID: ${charge.id}. Order moved to Processing.`,
-      });
-
-      await order.save();
-      logger.info(`✅ [Webhook Mock] Order ${orderId} marked as Paid & Processing successfully.`);
+  /**
+   * Step 2: the browser hands back what Checkout gave it. The signature is an HMAC of
+   * "<razorpay_order_id>|<razorpay_payment_id>" keyed with the secret, which only our
+   * server and Razorpay know — so a client cannot forge a successful payment.
+   *
+   * The signature alone proves authenticity; we additionally fetch the payment to confirm
+   * it is actually captured for the full amount before releasing the order.
+   */
+  public async verifyPayment(input: {
+    orderId: string;
+    razorpayOrderId: string;
+    razorpayPaymentId: string;
+    signature: string;
+  }): Promise<{ paid: boolean; transactionId: string }> {
+    if (!isRazorpayConfigured()) {
+      throw new AppError('Online payment is temporarily unavailable.', 503);
     }
+
+    const { orderId, razorpayOrderId, razorpayPaymentId, signature } = input;
+
+    const order = await orderRepository.findById(orderId);
+    if (!order) throw new NotFoundError('Order not found');
+
+    const stored = readPaymentDetails(order.paymentDetails);
+    if (stored.razorpayOrderId && stored.razorpayOrderId !== razorpayOrderId) {
+      // The payment belongs to a different gateway order than the one we created here.
+      throw new BadRequestError('This payment does not belong to the order being paid');
+    }
+
+    const expected = crypto
+      .createHmac('sha256', razorpayConfig.keySecret)
+      .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+      .digest('hex');
+
+    if (!signaturesMatch(expected, signature)) {
+      logger.warn(
+        `🚨 [Razorpay] Signature mismatch verifying payment ${razorpayPaymentId} for order ${orderId}`
+      );
+      await this.markFailed(order, 'Payment signature verification failed.');
+      throw new BadRequestError('We could not verify this payment. It has not been charged.');
+    }
+
+    const payment = await razorpayRequest<RazorpayPayment>(`/payments/${razorpayPaymentId}`);
+
+    if (payment.order_id !== razorpayOrderId) {
+      throw new BadRequestError('Payment does not match the gateway order');
+    }
+    if (payment.amount < toMinorUnits(order.totals.grandTotal)) {
+      logger.warn(
+        `🚨 [Razorpay] Underpayment for order ${orderId}: paid ${payment.amount}, expected ${toMinorUnits(order.totals.grandTotal)}`
+      );
+      throw new BadRequestError('The amount paid does not cover the order total.');
+    }
+    if (payment.status !== 'captured' && payment.status !== 'authorized') {
+      throw new BadRequestError(
+        payment.error_description || 'The payment was not completed. Please try again.'
+      );
+    }
+
+    await this.markPaid(order, payment);
+    return { paid: true, transactionId: payment.id };
+  }
+
+  /**
+   * Out-of-band settlement. Razorpay retries this, and it is the only path that still
+   * completes an order when the shopper closes the tab after paying, so it must be
+   * idempotent — markPaid() returns early if the order is already paid.
+   */
+  public async handleWebhook(rawBody: Buffer, signature: string | undefined): Promise<void> {
+    if (!isRazorpayWebhookConfigured()) {
+      throw new AppError('Webhooks are not configured on this server.', 503);
+    }
+    if (!signature) {
+      throw new BadRequestError('Missing X-Razorpay-Signature header');
+    }
+
+    const expected = crypto
+      .createHmac('sha256', razorpayConfig.webhookSecret)
+      .update(rawBody)
+      .digest('hex');
+
+    if (!signaturesMatch(expected, signature)) {
+      logger.warn('🚨 [Razorpay] Rejected a webhook with an invalid signature');
+      // Deliberately an auth failure, not a 400: the body may be perfectly well-formed.
+      throw new AppError('Invalid webhook signature', 401);
+    }
+
+    const event = JSON.parse(rawBody.toString('utf8')) as {
+      event: string;
+      payload?: { payment?: { entity?: RazorpayPayment } };
+    };
+    const payment = event.payload?.payment?.entity;
+    logger.info(`🔌 [Razorpay] Webhook received: ${event.event}`);
+
+    if (!payment) return;
+
+    // The payment entity carries its own notes only if Checkout set them, so the
+    // reliable link back to our order is the gateway order id stored at checkout.
+    const order = payment.order_id
+      ? await orderRepository.findByRazorpayOrderId(payment.order_id)
+      : null;
+
+    if (!order) {
+      logger.warn(
+        `🔌 [Razorpay] Webhook ${event.event}: no local order matches gateway order ` +
+          `${payment.order_id || '(none)'}; ignoring`
+      );
+      return;
+    }
+
+    if (event.event === 'payment.captured' || event.event === 'order.paid') {
+      await this.markPaid(order, payment);
+    } else if (event.event === 'payment.failed') {
+      await this.markFailed(
+        order,
+        `Payment failed at the gateway${payment.error_description ? `: ${payment.error_description}` : '.'}`
+      );
+    }
+  }
+
+  /** Idempotent: safe to call from both the browser verify call and the webhook. */
+  private async markPaid(
+    order: Awaited<ReturnType<typeof orderRepository.findById>> & object,
+    payment: RazorpayPayment
+  ): Promise<void> {
+    if (order.paymentStatus === PaymentStatus.PAID) {
+      logger.info(`🔁 [Razorpay] Order ${order.id} is already paid; skipping`);
+      return;
+    }
+    if (order.orderStatus === OrderStatus.CANCELLED) {
+      logger.warn(`⚠️  [Razorpay] Order ${order.id} was cancelled before payment settled`);
+      return;
+    }
+
+    order.paymentStatus = PaymentStatus.PAID;
+    order.orderStatus = OrderStatus.PROCESSING;
+    order.paymentDetails = {
+      ...readPaymentDetails(order.paymentDetails),
+      provider: 'razorpay',
+      transactionId: payment.id,
+      razorpayOrderId: payment.order_id,
+      method: payment.method || 'unknown',
+      cardBrand: payment.card?.network,
+      cardLast4: payment.card?.last4,
+      bank: payment.bank,
+      wallet: payment.wallet,
+      vpa: payment.vpa,
+      amountMinor: payment.amount,
+      currency: payment.currency,
+      paidAt: new Date().toISOString(),
+    } as never;
+
+    order.statusHistory.push({
+      status: OrderStatus.PROCESSING,
+      timestamp: new Date(),
+      note: `Payment received via Razorpay (${payment.method || 'online'}). Payment ID: ${payment.id}.`,
+    });
+
+    await order.save();
+    logger.info(`✅ [Razorpay] Order ${order.id} marked Paid & Processing (payment ${payment.id})`);
+  }
+
+  private async markFailed(
+    order: Awaited<ReturnType<typeof orderRepository.findById>> & object,
+    note: string
+  ): Promise<void> {
+    // Never downgrade an order that already settled (a late failure webhook after capture).
+    if (order.paymentStatus === PaymentStatus.PAID) return;
+
+    order.paymentStatus = PaymentStatus.FAILED;
+    order.statusHistory.push({ status: order.orderStatus, timestamp: new Date(), note });
+    await order.save();
   }
 }
 

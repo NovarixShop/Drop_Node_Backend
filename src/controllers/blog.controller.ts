@@ -3,16 +3,24 @@ import { blogService } from '../services/blog.service';
 import { UserRole } from '../constants';
 import { z } from 'zod';
 
-const createBlogSchema = z.object({
+const blogFields = {
   title: z.string().min(3, 'Title must be at least 3 characters').max(100),
   content: z.string().min(10, 'Content must be at least 10 characters'),
   image: z.string().url('Image must be a valid URL').optional(),
-  tags: z.array(z.string()).optional().default([]),
+  tags: z.array(z.string()),
   category: z.string().min(1, 'Category is required'),
-  isPublished: z.boolean().optional().default(false),
+  isPublished: z.boolean(),
+};
+
+// Zod 4 applies .default() even inside .partial(), so an update schema built from the create schema would
+// silently reset omitted fields (e.g. images -> [], stock -> 0). Updates therefore use the default-free fields.
+const createBlogSchema = z.object({
+  ...blogFields,
+  tags: blogFields.tags.default([]),
+  isPublished: blogFields.isPublished.default(false),
 });
 
-const updateBlogSchema = createBlogSchema.partial();
+const updateBlogSchema = z.object(blogFields).partial();
 
 export class BlogController {
   // Get all blog posts (Public: only published; Admin: drafts too)

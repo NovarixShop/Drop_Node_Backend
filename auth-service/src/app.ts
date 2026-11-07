@@ -1,23 +1,26 @@
 import express, { Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
-import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import { globalErrorHandler } from '@shared/middlewares/error.middleware';
 import { NotFoundError } from '@shared/errors/app-error';
+import { sanitizeRequest } from '@shared/middlewares/sanitize.middleware';
 import router from './routes';
 
 const app = express();
+app.disable('x-powered-by');
 
 // Services are only reachable through the API gateway, which sets X-Forwarded-For to the real client IP
 app.set('trust proxy', 1);
 
 app.use(helmet());
-app.use(cors({ origin: ['https://www.admin.com', 'https://cms.admin.com', 'https://admin.com', 'http://localhost:3000', 'http://localhost:3001'], credentials: true }));
+// No CORS here on purpose: browsers only talk to the API gateway, which owns the CORS policy.
+// (A permissive policy here used to override the gateway's allow-list on every proxied response.)
 
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(cookieParser());
+app.use(sanitizeRequest);
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -33,6 +36,11 @@ const limiter = rateLimit({
   max: 200,
   windowMs: 15 * 60 * 1000,
   message: 'Too many requests, please try again in 15 minutes.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Service-to-service calls (blocked at the gateway, key-protected) must not share the public budget:
+  // without a forwarded client IP they all count against the calling container's IP.
+  skip: (req) => req.path.startsWith('/internal/'),
 });
 app.use('/api', limiter);
 

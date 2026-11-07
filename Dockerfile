@@ -28,7 +28,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 
 # Install ONLY production-grade dependencies
-RUN npm ci --only=production
+RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
 # Copy compiled JavaScript output from the builder stage
 COPY --from=builder /app/dist ./dist

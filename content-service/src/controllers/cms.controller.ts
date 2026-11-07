@@ -7,7 +7,7 @@ const createPageSchema = z.object({
   slug: z.string().optional(),
   content: z.string().min(5, 'Content is required'),
   section: z.string().min(1, 'Section identifier is required'),
-  metaData: z.record(z.any()).optional(),
+  metaData: z.record(z.string(), z.any()).optional(),
 });
 
 const updatePageSchema = createPageSchema.partial();

@@ -62,8 +62,14 @@ services:
       - REDIS_ENABLED=true
       - CLIENT_URL=http://api-gateway:5000
       - NODE_OPTIONS=--max-old-space-size=128
+      - UPLOAD_DIR=/app/uploads
+      - CONTENT_SERVICE_URL=http://content-service:5006
+    volumes:
+      # Uploaded product images; a named volume so they survive rebuilds/redeploys. Back it up!
+      - product_uploads:/app/uploads
     restart: always
-    mem_limit: 192m
+    # Extra headroom for decoding/re-encoding uploaded photos (sharp/libvips works outside the JS heap)
+    mem_limit: 384m
 
   # 6. Cart & Wishlist Microservice (Port 5003)
   cart-service:
@@ -146,3 +152,6 @@ services:
       - NODE_OPTIONS=--max-old-space-size=128
     restart: always
     mem_limit: 192m
+
+volumes:
+  product_uploads:

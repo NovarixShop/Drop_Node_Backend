@@ -6,6 +6,7 @@ import path from 'path';
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 import app from './app';
+import { assertSecureEnv } from '@shared/utils/env';
 import { connectDB } from './config/db.config';
 import { startNotificationWorker } from './workers/notification.worker';
 
@@ -15,6 +16,9 @@ process.on('uncaughtException', (err: Error) => {
 });
 
 const startServer = async () => {
+  // 0. Refuse to boot production with missing/placeholder secrets
+  assertSecureEnv('NotificationService', ['JWT_SECRET', 'JWT_REFRESH_SECRET']);
+
   // 1. Connect to Database
   await connectDB();
 

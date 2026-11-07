@@ -6,6 +6,7 @@ import path from 'path';
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 import app from './app';
+import { assertSecureEnv } from '@shared/utils/env';
 import { connectDB } from './config/db.config';
 import { redisCache } from './config/redis.config';
 
@@ -15,6 +16,9 @@ process.on('uncaughtException', (err: Error) => {
 });
 
 const startServer = async () => {
+  // 0. Refuse to boot production with missing/placeholder secrets
+  assertSecureEnv('CartService', ['JWT_SECRET', 'JWT_REFRESH_SECRET', 'INTERNAL_API_KEY']);
+
   // 1. Connect to Database
   await connectDB();
 

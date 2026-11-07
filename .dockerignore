@@ -1,7 +1,12 @@
 **/node_modules
 **/dist
+**/uploads
 .git
 .github
 logs
 *.log
+# Never bake secrets into images; docker-compose passes them at runtime via env_file
 .env
+.env.*
+**/.env
+**/.env.*

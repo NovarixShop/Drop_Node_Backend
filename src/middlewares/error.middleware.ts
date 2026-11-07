@@ -20,7 +20,7 @@ export const globalErrorHandler = (
   // Handle Zod Schema Validation Errors
   if (err instanceof ZodError) {
     const formattedErrors: Record<string, string[]> = {};
-    err.errors.forEach((issue) => {
+    err.issues.forEach((issue) => {
       const field = issue.path.join('.');
       if (!formattedErrors[field]) {
         formattedErrors[field] = [];

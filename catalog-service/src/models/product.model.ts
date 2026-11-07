@@ -5,7 +5,7 @@ export interface IProduct extends Document {
   slug: string;
   description: string;
   price: number;
-  compareAtPrice?: number;
+  compareAtPrice?: number | null;
   category: any;
   images: string[];
   stock: number;

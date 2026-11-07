@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireInternalKey } from '@shared/middlewares/internal.middleware';
 import cartRouter from './cart.routes';
 import wishlistRouter from './wishlist.routes';
 import couponRouter from './coupon.routes';
@@ -14,6 +15,6 @@ router.use('/coupons', couponRouter);
 router.use('/rewards', rewardRouter);
 
 // Internal microservice-to-microservice endpoints
-router.use('/internal', internalRouter);
+router.use('/internal', requireInternalKey, internalRouter);
 
 export default router;

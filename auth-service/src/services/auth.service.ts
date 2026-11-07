@@ -9,7 +9,13 @@ import { UserRole } from '@shared/constants';
 import { redisCache } from '../config/redis.config';
 import { OAuth2Client } from 'google-auth-library';
 
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+let googleClient: OAuth2Client | null = null;
+const getGoogleClient = () => {
+  if (!googleClient) {
+    googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+  }
+  return googleClient;
+};
 
 export class AuthService {
   private userRepo: UserRepository;
@@ -123,14 +129,26 @@ export class AuthService {
   }> {
     if (!idToken) throw new BadRequestError('ID Token is required');
 
-    const ticket = await googleClient.verifyIdToken({
-      idToken,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      console.error('❌ [AuthService] GOOGLE_CLIENT_ID is not configured in environment variables');
+      throw new BadRequestError('Google sign-in is not configured on the server (missing GOOGLE_CLIENT_ID).');
+    }
+
+    let ticket;
+    try {
+      ticket = await getGoogleClient().verifyIdToken({
+        idToken,
+        audience: clientId,
+      });
+    } catch (err: any) {
+      console.error('❌ [AuthService] Google ID token verification failed:', err.message);
+      throw new UnauthorizedError(`Google authentication failed: ${err.message}`);
+    }
     
     const payload = ticket.getPayload();
     if (!payload || !payload.email) {
-      throw new UnauthorizedError('Invalid Google Token');
+      throw new UnauthorizedError('Invalid Google Token: payload missing email');
     }
 
     // A Google account can carry an email address its owner never proved they control.
@@ -140,7 +158,7 @@ export class AuthService {
     }
 
     const { email, name } = payload;
-    let user = await this.userRepo.findByEmail(email, '+refreshToken');
+    let user = await this.userRepo.findByEmail(email, '+password +refreshToken');
     
     if (!user) {
       // Create user if not exists

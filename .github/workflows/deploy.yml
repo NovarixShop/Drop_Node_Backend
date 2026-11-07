@@ -96,7 +96,10 @@ jobs:
             if ! grep -q "^CORS_ORIGINS=.\+" .env.local; then
               echo "🌐 Setting default CORS_ORIGINS..."
               sed -i '/^CORS_ORIGINS=/d' .env.local
-              echo "CORS_ORIGINS=https://novarixshop.tech,https://cms.novarixshop.tech,http://localhost:3000,http://localhost:3001" >> .env.local
+              echo "CORS_ORIGINS=https://novarixshop.tech,https://admin.novarixshop.tech,https://cms.novarixshop.tech,http://localhost:3000,http://localhost:3001" >> .env.local
+            elif ! grep -q "admin\.novarixshop\.tech" .env.local; then
+              echo "🌐 Adding admin.novarixshop.tech to CORS_ORIGINS..."
+              sed -i 's/^CORS_ORIGINS=/CORS_ORIGINS=https:\/\/admin.novarixshop.tech,/' .env.local
             fi
 
             # Auto-configure MongoDB and Redis URIs if dummy example or empty

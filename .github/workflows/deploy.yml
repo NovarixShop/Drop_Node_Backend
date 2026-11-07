@@ -1,0 +1,76 @@
+name: Deploy Backend to Hostinger VPS
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  test-and-build:
+    name: Lint & Build Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run TypeScript Linter Check
+        run: npm run lint
+
+      - name: Verify Microservices Production Compilation
+        run: npm run build:all
+
+  deploy:
+    name: Sync & Deploy to Hostinger VPS
+    needs: test-and-build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    steps:
+      - name: Deploy to Hostinger VPS via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOSTINGER_SSH_HOST }}
+          username: ${{ secrets.HOSTINGER_SSH_USER }}
+          key: ${{ secrets.HOSTINGER_SSH_KEY }}
+          port: ${{ secrets.HOSTINGER_SSH_PORT || 22 }}
+          script_stop: true
+          script: |
+            TARGET_DIR="${{ secrets.HOSTINGER_BACKEND_DIR || '/var/www/Drop_Node_Backend' }}"
+            echo "🚀 Deploying Backend to $TARGET_DIR on Hostinger VPS..."
+            
+            if [ ! -d "$TARGET_DIR" ]; then
+              echo "Directory $TARGET_DIR does not exist. Creating and cloning..."
+              mkdir -p "$TARGET_DIR"
+              git clone https://github.com/${{ github.repository }}.git "$TARGET_DIR"
+            fi
+            
+            cd "$TARGET_DIR"
+            
+            # Fetch and sync latest main
+            git fetch origin main
+            git reset --hard origin/main
+            
+            # Rebuild and restart Docker containers if docker-compose exists
+            if [ -f "docker-compose.yml" ]; then
+              echo "🐳 Rebuilding and restarting Docker containers..."
+              docker compose up -d --build --remove-orphans
+              docker image prune -f
+            else
+              echo "📦 Installing dependencies and compiling..."
+              npm ci
+              npm run build:all
+              if command -v pm2 &> /dev/null; then
+                pm2 restart backend || pm2 start dist/server.js --name "backend"
+                pm2 save
+              fi
+            fi
+            
+            echo "✅ Backend deployment complete!"

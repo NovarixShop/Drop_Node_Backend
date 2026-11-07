@@ -85,6 +85,17 @@ const forwardTo = (target: string, prefix: string, options: { limit?: string; cr
       if (options.crossOriginResource) headers['cross-origin-resource-policy'] = 'cross-origin';
       return headers;
     },
+    proxyErrorHandler: (err: any, res: any, next: any) => {
+      console.error(`❌ [Gateway] Proxy error communicating with ${target}${prefix}:`, err?.message || err);
+      if (res.headersSent) {
+        return next(err);
+      }
+      return res.status(502).json({
+        status: 'error',
+        message: `Service at ${prefix} is temporarily unavailable or restarting. Please try again shortly.`,
+        code: err?.code || 'SERVICE_UNAVAILABLE',
+      });
+    },
   });
 
 // Product images: proxied before the rate limiter, because one product grid loads dozens of images and
@@ -164,6 +175,16 @@ app.get('/api/health', (_req, res) => {
 // 8. JSON 404 for anything not routed above
 app.use((req, res) => {
   res.status(404).json({ status: 'error', message: `Cannot find ${req.method} ${req.path}` });
+});
+
+// 9. Centralized Error Handler for Gateway (Ensures JSON errors always, never raw HTML)
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('❌ [Gateway] Unhandled Error:', err);
+  if (res.headersSent) return;
+  res.status(err.status || 500).json({
+    status: 'error',
+    message: err.message || 'Internal Server Error',
+  });
 });
 
 app.listen(PORT, () => {

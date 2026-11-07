@@ -75,12 +75,50 @@ jobs:
               echo "⚠️ .env.local not found on VPS. Initializing from .env.example..."
               cp .env.example .env.local
             fi
+
+            # Auto-repair required production secrets if missing or empty
+            echo "🔐 Verifying and securing production environment variables..."
+            if ! grep -q "^JWT_SECRET=.\{32,\}" .env.local; then
+              echo "🔑 Generating secure JWT_SECRET..."
+              sed -i '/^JWT_SECRET=/d' .env.local
+              echo "JWT_SECRET=$(openssl rand -hex 32)" >> .env.local
+            fi
+            if ! grep -q "^JWT_REFRESH_SECRET=.\{32,\}" .env.local; then
+              echo "🔑 Generating secure JWT_REFRESH_SECRET..."
+              sed -i '/^JWT_REFRESH_SECRET=/d' .env.local
+              echo "JWT_REFRESH_SECRET=$(openssl rand -hex 32)" >> .env.local
+            fi
+            if ! grep -q "^INTERNAL_API_KEY=.\{32,\}" .env.local; then
+              echo "🔑 Generating secure INTERNAL_API_KEY..."
+              sed -i '/^INTERNAL_API_KEY=/d' .env.local
+              echo "INTERNAL_API_KEY=$(openssl rand -hex 32)" >> .env.local
+            fi
+            if ! grep -q "^CORS_ORIGINS=.\+" .env.local; then
+              echo "🌐 Setting default CORS_ORIGINS..."
+              sed -i '/^CORS_ORIGINS=/d' .env.local
+              echo "CORS_ORIGINS=https://novarixshop.tech,https://cms.novarixshop.tech,http://localhost:3000,http://localhost:3001" >> .env.local
+            fi
+
+            # Auto-configure MongoDB and Redis URIs if dummy example or empty
+            if grep -q "cluster.example.mongodb.net" .env.local || ! grep -q "^MONGODB_URI=.\+" .env.local; then
+              echo "🗄️ Configuring MongoDB URI to Docker mongo container..."
+              sed -i '/^MONGODB_URI=/d' .env.local
+              echo "MONGODB_URI=mongodb://mongo:27017/ecommerce" >> .env.local
+            fi
+            if grep -q "redis.example.com" .env.local || ! grep -q "^REDIS_URL=.\+" .env.local; then
+              echo "🧠 Configuring Redis URL to Docker redis container..."
+              sed -i '/^REDIS_URL=/d' .env.local
+              echo "REDIS_URL=redis://redis:6379" >> .env.local
+            fi
             
             # Rebuild and restart Docker containers if docker-compose exists
             if [ -f "docker-compose.yml" ]; then
               echo "🐳 Rebuilding and restarting Docker containers..."
               docker compose up -d --build --remove-orphans
               docker image prune -f
+              sleep 6
+              echo "📊 Container status:"
+              docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
             else
               echo "📦 Installing dependencies and compiling..."
               npm ci
@@ -90,5 +128,16 @@ jobs:
                 pm2 save
               fi
             fi
+
+            echo "🔍 Auth service recent logs:"
+            docker logs ecommerce_auth_service --tail 25 2>&1 || true
+
+            echo "🔍 API Gateway recent logs:"
+            docker logs ecommerce_api_gateway --tail 25 2>&1 || true
+
+            # Seed Super Admin
+            echo "🌱 Seeding Super Admin (novarixshop5@gmail.com)..."
+            npm install --production --no-audit --no-fund mongoose bcryptjs dotenv || true
+            node scripts/seed-admin.js || echo "⚠️ Seed script completed with notice"
             
             echo "✅ Backend deployment complete!"

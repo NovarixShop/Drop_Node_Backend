@@ -1,4 +1,26 @@
 services:
+  # 1. MongoDB Database Container
+  mongo:
+    image: mongo:6.0
+    container_name: ecommerce_mongodb
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: always
+    mem_limit: 384m
+
+  # 2. Redis Cache & Event Bus Container
+  redis:
+    image: redis:7.0-alpine
+    container_name: ecommerce_redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: always
+    mem_limit: 128m
+
   # 3. Central API Gateway
   api-gateway:
     build:
@@ -45,6 +67,9 @@ services:
       - CLIENT_URL=http://api-gateway:5000
       - NODE_OPTIONS=--max-old-space-size=128
     restart: always
+    depends_on:
+      - mongo
+      - redis
     mem_limit: 192m
 
   # 5. Catalog & Product Microservice (Port 5002)
@@ -90,6 +115,9 @@ services:
     depends_on:
       - catalog-service
     restart: always
+    depends_on:
+      - mongo
+      - redis
     mem_limit: 192m
 
   # 7. Order & Checkout Microservice (Port 5004)
@@ -115,6 +143,9 @@ services:
       - catalog-service
       - cart-service
     restart: always
+    depends_on:
+      - mongo
+      - redis
     mem_limit: 192m
 
   # 8. Notification Microservice & Worker (Port 5005)
@@ -133,6 +164,9 @@ services:
       - CLIENT_URL=http://api-gateway:5000
       - NODE_OPTIONS=--max-old-space-size=128
     restart: always
+    depends_on:
+      - mongo
+      - redis
     mem_limit: 192m
 
   # 9. Content & CMS Microservice (Port 5006)
@@ -151,7 +185,12 @@ services:
       - CLIENT_URL=http://api-gateway:5000
       - NODE_OPTIONS=--max-old-space-size=128
     restart: always
+    depends_on:
+      - mongo
+      - redis
     mem_limit: 192m
 
 volumes:
+  mongo-data:
+  redis-data:
   product_uploads:

@@ -93,6 +93,9 @@ services:
       # Uploaded product images; a named volume so they survive rebuilds/redeploys. Back it up!
       - product_uploads:/app/uploads
     restart: always
+    depends_on:
+      - mongo
+      - redis
     # Extra headroom for decoding/re-encoding uploaded photos (sharp/libvips works outside the JS heap)
     mem_limit: 384m
 
@@ -114,10 +117,9 @@ services:
       - NODE_OPTIONS=--max-old-space-size=128
     depends_on:
       - catalog-service
-    restart: always
-    depends_on:
       - mongo
       - redis
+    restart: always
     mem_limit: 192m
 
   # 7. Order & Checkout Microservice (Port 5004)
@@ -142,10 +144,9 @@ services:
       - auth-service
       - catalog-service
       - cart-service
-    restart: always
-    depends_on:
       - mongo
       - redis
+    restart: always
     mem_limit: 192m
 
   # 8. Notification Microservice & Worker (Port 5005)

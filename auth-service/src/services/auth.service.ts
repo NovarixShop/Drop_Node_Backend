@@ -122,12 +122,15 @@ export class AuthService {
     };
   }
 
-  public async googleLogin(idToken: string): Promise<{
+  public async googleLogin(params: { idToken?: string; accessToken?: string }): Promise<{
     user: Omit<IUser, 'password'>;
     accessToken: string;
     refreshToken: string;
   }> {
-    if (!idToken) throw new BadRequestError('ID Token is required');
+    const { idToken, accessToken: googleAccessToken } = params;
+    if (!idToken && !googleAccessToken) {
+      throw new BadRequestError('Either idToken or accessToken is required');
+    }
 
     const clientId = process.env.GOOGLE_CLIENT_ID;
     if (!clientId) {
@@ -135,29 +138,67 @@ export class AuthService {
       throw new BadRequestError('Google sign-in is not configured on the server (missing GOOGLE_CLIENT_ID).');
     }
 
-    let ticket;
-    try {
-      ticket = await getGoogleClient().verifyIdToken({
-        idToken,
-        audience: clientId,
-      });
-    } catch (err: any) {
-      console.error('❌ [AuthService] Google ID token verification failed:', err.message);
-      throw new UnauthorizedError(`Google authentication failed: ${err.message}`);
-    }
-    
-    const payload = ticket.getPayload();
-    if (!payload || !payload.email) {
-      throw new UnauthorizedError('Invalid Google Token: payload missing email');
+    let email: string;
+    let name: string | undefined;
+
+    if (idToken) {
+      let ticket;
+      try {
+        ticket = await getGoogleClient().verifyIdToken({
+          idToken,
+          audience: clientId,
+        });
+      } catch (err: any) {
+        console.error('❌ [AuthService] Google ID token verification failed:', err.message);
+        throw new UnauthorizedError(`Google authentication failed: ${err.message}`);
+      }
+      
+      const payload = ticket.getPayload();
+      if (!payload || !payload.email) {
+        throw new UnauthorizedError('Invalid Google Token: payload missing email');
+      }
+
+      // A Google account can carry an email address its owner never proved they control.
+      // Linking on such an email would let anyone sign in to an existing account here.
+      if (payload.email_verified !== true) {
+        throw new UnauthorizedError('Your Google email address is not verified.');
+      }
+
+      email = payload.email;
+      name = payload.name;
+    } else {
+      try {
+        const tokenInfo = await getGoogleClient().getTokenInfo(googleAccessToken!);
+        if (!tokenInfo.email) {
+          throw new Error('Google token does not contain an email');
+        }
+        email = tokenInfo.email;
+        name = tokenInfo.email.split('@')[0];
+
+        // Retrieve full profile from Google userinfo API
+        try {
+          const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${googleAccessToken}` },
+          });
+          if (userinfoRes.ok) {
+            const userinfo = (await userinfoRes.json()) as { name?: string; email?: string; email_verified?: boolean };
+            if (userinfo.name) name = userinfo.name;
+            if (userinfo.email) email = userinfo.email;
+            if (userinfo.email_verified === false) {
+              throw new UnauthorizedError('Your Google email address is not verified.');
+            }
+          }
+        } catch (fetchErr: any) {
+          if (fetchErr instanceof UnauthorizedError) throw fetchErr;
+          console.warn('[AuthService] Could not fetch detailed userinfo, continuing with tokenInfo:', fetchErr?.message);
+        }
+      } catch (err: any) {
+        if (err instanceof UnauthorizedError) throw err;
+        console.error('❌ [AuthService] Google access token verification failed:', err.message);
+        throw new UnauthorizedError(`Google authentication failed: ${err.message}`);
+      }
     }
 
-    // A Google account can carry an email address its owner never proved they control.
-    // Linking on such an email would let anyone sign in to an existing account here.
-    if (payload.email_verified !== true) {
-      throw new UnauthorizedError('Your Google email address is not verified.');
-    }
-
-    const { email, name } = payload;
     let user = await this.userRepo.findByEmail(email, '+password +refreshToken');
     
     if (!user) {

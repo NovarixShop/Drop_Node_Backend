@@ -19,7 +19,11 @@ if (process.env.TRUST_PROXY) {
 }
 
 // 1. Security Headers
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+  })
+);
 
 // 2. CORS Policies
 // CORS_ORIGINS = comma-separated list of the storefront and CMS origins, e.g.

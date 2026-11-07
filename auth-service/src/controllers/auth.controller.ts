@@ -13,9 +13,14 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Password is required').max(128, 'Password cannot exceed 128 characters'),
 });
 
-const googleLoginSchema = z.object({
-  idToken: z.string().min(1, 'ID Token is required'),
-});
+const googleLoginSchema = z
+  .object({
+    idToken: z.string().optional(),
+    accessToken: z.string().optional(),
+  })
+  .refine((data) => !!(data.idToken || data.accessToken), {
+    message: 'Either idToken or accessToken is required',
+  });
 
 const forgotPasswordSchema = z.object({
   email: z.string().email('Please provide a valid email address'),
@@ -87,7 +92,10 @@ export class AuthController {
   public async googleLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const validatedBody = googleLoginSchema.parse(req.body);
-      const { user, accessToken, refreshToken } = await authService.googleLogin(validatedBody.idToken);
+      const { user, accessToken, refreshToken } = await authService.googleLogin({
+        idToken: validatedBody.idToken,
+        accessToken: validatedBody.accessToken,
+      });
 
       res.cookie('refreshToken', refreshToken, {
         httpOnly: true,

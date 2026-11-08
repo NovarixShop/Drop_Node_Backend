@@ -150,6 +150,8 @@ app.use('/api/rewards', forwardTo(CART_URL, '/api/rewards'));
 // Order & Checkout Service Proxy
 app.use('/api/orders', forwardTo(ORDER_URL, '/api/orders'));
 app.use('/api/payments', forwardTo(ORDER_URL, '/api/payments'));
+app.use('/api/create-order', forwardTo(ORDER_URL, '/api/payments/create-order'));
+app.use('/api/verify-payment', forwardTo(ORDER_URL, '/api/payments/verify-payment'));
 app.use('/api/tracking', forwardTo(ORDER_URL, '/api/tracking'));
 app.use('/api/admin/analytics', forwardTo(ORDER_URL, '/api/admin/analytics'));
 

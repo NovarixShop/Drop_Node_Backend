@@ -4,6 +4,10 @@ import { protect } from '@shared/middlewares/auth.middleware';
 
 const router = Router();
 
+// Standard Razorpay Checkout routes
+router.post('/create-order', orderController.createGenericOrder.bind(orderController));
+router.post('/verify-payment', orderController.verifyGenericPayment.bind(orderController));
+
 // Protected: open a Razorpay Checkout session for an order the shopper owns.
 router.post(
   '/razorpay/order/:id',

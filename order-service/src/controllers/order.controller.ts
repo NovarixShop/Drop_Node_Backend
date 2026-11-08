@@ -29,6 +29,27 @@ const verifyPaymentSchema = z.object({
   razorpay_signature: z.string().min(1, 'razorpay_signature is required'),
 });
 
+const createOrderSchema = z.object({
+  amount: z.number().min(100, 'Minimum amount is 100 paise'),
+  currency: z.string().optional(),
+  receipt: z.string().optional(),
+});
+
+const genericVerifyPaymentSchema = z.object({
+  order_id: z.string().optional(),
+  razorpay_order_id: z.string().optional(),
+  payment_id: z.string().optional(),
+  razorpay_payment_id: z.string().optional(),
+  signature: z.string().optional(),
+  razorpay_signature: z.string().optional(),
+}).refine(
+  (data) =>
+    Boolean(data.order_id || data.razorpay_order_id) &&
+    Boolean(data.payment_id || data.razorpay_payment_id) &&
+    Boolean(data.signature || data.razorpay_signature),
+  { message: 'Missing order_id, payment_id, or signature' }
+);
+
 const updateStatusSchema = z.object({
   status: z.nativeEnum(OrderStatus),
   note: z.string().optional(),
@@ -158,6 +179,44 @@ export class OrderController {
         status: 'success',
         message: 'Payment verified. Your order is confirmed.',
         data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Generic create-order endpoint for Razorpay Standard Checkout
+  public async createGenericOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const body = createOrderSchema.parse(req.body);
+      const result = await paymentService.createRawOrder(body);
+      res.status(200).json({
+        success: true,
+        order_id: result.order_id,
+        amount: result.amount,
+        currency: result.currency,
+        key_id: result.key_id,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Generic verify-payment endpoint for Razorpay Standard Checkout
+  public async verifyGenericPayment(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const body = genericVerifyPaymentSchema.parse(req.body);
+      const order_id = (body.order_id || body.razorpay_order_id)!;
+      const payment_id = (body.payment_id || body.razorpay_payment_id)!;
+      const signature = (body.signature || body.razorpay_signature)!;
+
+      await paymentService.verifyRawPayment({ order_id, payment_id, signature });
+
+      res.status(200).json({
+        success: true,
+        message: 'Payment verified successfully',
+        payment_id,
+        order_id,
       });
     } catch (error) {
       next(error);

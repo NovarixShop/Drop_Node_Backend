@@ -301,6 +301,75 @@ export class PaymentService {
     order.statusHistory.push({ status: order.orderStatus, timestamp: new Date(), note });
     await order.save();
   }
+
+  /**
+   * Direct Standard Checkout order creation (accepts amount in paise).
+   */
+  public async createRawOrder(input: {
+    amount: number;
+    currency?: string;
+    receipt?: string;
+  }): Promise<{
+    order_id: string;
+    amount: number;
+    currency: string;
+    key_id: string;
+  }> {
+    if (!isRazorpayConfigured()) {
+      throw new AppError('Razorpay is not configured on the server.', 503);
+    }
+
+    if (input.amount < 100) {
+      throw new BadRequestError('Minimum amount is 100 paise');
+    }
+
+    const razorpayOrder = await razorpayRequest<RazorpayOrder>('/orders', {
+      method: 'POST',
+      body: {
+        amount: Math.round(input.amount),
+        currency: input.currency || razorpayConfig.currency || 'INR',
+        receipt: input.receipt || `rcpt_${Date.now()}`,
+      },
+    });
+
+    return {
+      order_id: razorpayOrder.id,
+      amount: razorpayOrder.amount,
+      currency: razorpayOrder.currency,
+      key_id: razorpayConfig.keyId,
+    };
+  }
+
+  /**
+   * Direct signature verification for standard checkout.
+   */
+  public async verifyRawPayment(input: {
+    order_id: string;
+    payment_id: string;
+    signature: string;
+  }): Promise<{ verified: boolean }> {
+    if (!isRazorpayConfigured()) {
+      throw new AppError('Razorpay is not configured on the server.', 503);
+    }
+
+    const { order_id, payment_id, signature } = input;
+    if (!order_id || !payment_id || !signature) {
+      throw new BadRequestError('Missing order_id, payment_id, or signature');
+    }
+
+    const expected = crypto
+      .createHmac('sha256', razorpayConfig.keySecret)
+      .update(`${order_id}|${payment_id}`)
+      .digest('hex');
+
+    const matches = signaturesMatch(expected, signature);
+    if (!matches) {
+      logger.warn(`🚨 [Razorpay] Standard checkout signature mismatch for payment ${payment_id}`);
+      throw new BadRequestError('Invalid payment signature');
+    }
+
+    return { verified: true };
+  }
 }
 
 export const paymentService = new PaymentService();

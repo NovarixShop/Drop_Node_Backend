@@ -4,6 +4,7 @@ import { paymentService } from '../services/payment.service';
 import { trackingService } from '../services/tracking.service';
 import { ForbiddenError } from '@shared/errors/app-error';
 import { UserRole, PaymentMethod, OrderStatus } from '@shared/constants';
+import { getUserIdFromOrder } from '../models/order.model';
 import { z } from 'zod';
 
 const addressSchema = z.object({
@@ -103,7 +104,7 @@ export class OrderController {
 
       // Authorization check: User must own the order, or be an Admin/Vendor
       if (
-        order.user.toString() !== userId &&
+        getUserIdFromOrder(order) !== userId &&
         userRole !== UserRole.ADMIN &&
         userRole !== UserRole.VENDOR
       ) {
@@ -142,7 +143,7 @@ export class OrderController {
 
       // Only the order owner may pay for it.
       const order = await orderService.getOrderDetails(orderId);
-      if (order.user.toString() !== req.authUser!.id) {
+      if (getUserIdFromOrder(order) !== req.authUser!.id) {
         throw new ForbiddenError('You do not have permission to pay for this order.');
       }
 
@@ -164,7 +165,7 @@ export class OrderController {
       const body = verifyPaymentSchema.parse(req.body);
 
       const order = await orderService.getOrderDetails(body.orderId);
-      if (order.user.toString() !== req.authUser!.id) {
+      if (getUserIdFromOrder(order) !== req.authUser!.id) {
         throw new ForbiddenError('You do not have permission to pay for this order.');
       }
 
@@ -253,7 +254,7 @@ export class OrderController {
 
       // Authorization check: User must own the order or be Admin/Vendor
       if (
-        order.user.toString() !== userId &&
+        getUserIdFromOrder(order) !== userId &&
         userRole !== UserRole.ADMIN &&
         userRole !== UserRole.VENDOR
       ) {

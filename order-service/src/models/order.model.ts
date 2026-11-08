@@ -15,6 +15,16 @@ if (!mongoose.models.User) {
   );
 }
 
+// Safely extracts the user id as a string regardless of whether order.user is populated ({ _id, name, email }) or a raw ObjectId
+export const getUserIdFromOrder = (order: { user: any } | null | undefined): string => {
+  if (!order || !order.user) return '';
+  if (typeof order.user === 'object') {
+    if (order.user._id) return order.user._id.toString();
+    if (order.user.id) return order.user.id.toString();
+  }
+  return order.user.toString();
+};
+
 export interface IOrderItem {
   product: Schema.Types.ObjectId;
   name: string;

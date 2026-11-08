@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { orderRepository } from '../repositories/order.repository';
+import { getUserIdFromOrder } from '../models/order.model';
 import { PaymentStatus, OrderStatus, PaymentMethod } from '@shared/constants';
 import { AppError, BadRequestError, NotFoundError } from '@shared/errors/app-error';
 import { logger } from '@shared/utils/logger';
@@ -292,17 +293,20 @@ export class PaymentService {
     logger.info(`✅ [Razorpay] Order ${order.id} marked Paid & Processing (payment ${payment.id})`);
 
     // Clear user's cart in Cart Service
+    const orderUserId = getUserIdFromOrder(order);
     try {
-      await cartClient.clearCart(order.user.toString());
+      if (orderUserId) {
+        await cartClient.clearCart(orderUserId);
+      }
     } catch (cartErr) {
-      logger.warn(`⚠️ Failed to clear cart for user ${order.user} after payment`, cartErr);
+      logger.warn(`⚠️ Failed to clear cart for user ${orderUserId} after payment`, cartErr);
     }
 
     // Publish order.placed event to Redis Pub/Sub for notifications
     try {
       await redisCache.publish('order.placed', {
         orderId: order.id,
-        userId: order.user.toString(),
+        userId: orderUserId,
         grandTotal: order.totals.grandTotal,
         trackingNumber: order.trackingNumber,
         itemsCount: order.items.length,

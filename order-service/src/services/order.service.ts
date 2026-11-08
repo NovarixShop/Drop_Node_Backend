@@ -1,6 +1,6 @@
 import { orderRepository, OrderRepository } from '../repositories/order.repository';
 import { cartClient, catalogClient } from '../utils/clients';
-import { IOrder } from '../models/order.model';
+import { IOrder, getUserIdFromOrder } from '../models/order.model';
 import { BadRequestError, NotFoundError } from '@shared/errors/app-error';
 import { OrderStatus, PaymentStatus, PaymentMethod } from '@shared/constants';
 import { v4 as uuidv4 } from 'uuid';
@@ -145,7 +145,7 @@ export class OrderService {
     }
 
     // Verify ownership
-    if (order.user.toString() !== userId) {
+    if (getUserIdFromOrder(order) !== userId) {
       throw new BadRequestError('You do not have permission to cancel this order');
     }
 

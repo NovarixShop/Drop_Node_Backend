@@ -11,6 +11,7 @@
  *   RAZORPAY_WEBHOOK_SECRET  server-only. Set to the same value in the Razorpay dashboard webhook.
  */
 import { logger } from '@shared/utils/logger';
+import { AppError } from '@shared/errors/app-error';
 
 const RAZORPAY_API_BASE = 'https://api.razorpay.com/v1';
 
@@ -86,19 +87,25 @@ export const razorpayRequest = async <T>(
     if (!res.ok) {
       const description = payload?.error?.description || `Razorpay request failed (${res.status})`;
       logger.error(`❌ [Razorpay] ${method} ${path} -> ${res.status}: ${description}`);
-      const err = new Error(description) as RazorpayError;
-      err.statusCode = res.status;
-      err.razorpayCode = payload?.error?.code;
-      throw err;
+      let userMessage = `Payment gateway error: ${description}`;
+      if (description.toLowerCase().includes('authentication failed')) {
+        userMessage =
+          'Payment gateway authentication failed: The Razorpay API Key ID or Secret configured on the server is invalid or expired. Please check your credentials in the Razorpay Dashboard.';
+      }
+      throw new AppError(userMessage, 502);
     }
 
     return payload as T;
   } catch (err) {
+    if (err instanceof AppError) {
+      throw err;
+    }
     if (err instanceof Error && err.name === 'AbortError') {
       logger.error(`❌ [Razorpay] ${method} ${path} timed out after 15s`);
-      throw new Error('The payment gateway did not respond in time. Please try again.');
+      throw new AppError('The payment gateway did not respond in time. Please try again.', 504);
     }
-    throw err;
+    logger.error(`❌ [Razorpay] Unexpected error during ${method} ${path}:`, err);
+    throw new AppError((err as Error).message || 'Payment gateway connection error', 502);
   } finally {
     clearTimeout(timeout);
   }

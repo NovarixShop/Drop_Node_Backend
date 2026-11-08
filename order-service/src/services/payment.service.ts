@@ -3,6 +3,8 @@ import { orderRepository } from '../repositories/order.repository';
 import { PaymentStatus, OrderStatus, PaymentMethod } from '@shared/constants';
 import { AppError, BadRequestError, NotFoundError } from '@shared/errors/app-error';
 import { logger } from '@shared/utils/logger';
+import { cartClient, catalogClient } from '../utils/clients';
+import { redisCache } from '../config/redis.config';
 import {
   razorpayConfig,
   razorpayRequest,
@@ -288,6 +290,27 @@ export class PaymentService {
 
     await order.save();
     logger.info(`✅ [Razorpay] Order ${order.id} marked Paid & Processing (payment ${payment.id})`);
+
+    // Clear user's cart in Cart Service
+    try {
+      await cartClient.clearCart(order.user.toString());
+    } catch (cartErr) {
+      logger.warn(`⚠️ Failed to clear cart for user ${order.user} after payment`, cartErr);
+    }
+
+    // Publish order.placed event to Redis Pub/Sub for notifications
+    try {
+      await redisCache.publish('order.placed', {
+        orderId: order.id,
+        userId: order.user.toString(),
+        grandTotal: order.totals.grandTotal,
+        trackingNumber: order.trackingNumber,
+        itemsCount: order.items.length,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (redisErr) {
+      logger.error('⚠️ Failed to publish order.placed event to Redis Pub/Sub', redisErr);
+    }
   }
 
   private async markFailed(
@@ -298,7 +321,24 @@ export class PaymentService {
     if (order.paymentStatus === PaymentStatus.PAID) return;
 
     order.paymentStatus = PaymentStatus.FAILED;
-    order.statusHistory.push({ status: order.orderStatus, timestamp: new Date(), note });
+    order.orderStatus = OrderStatus.CANCELLED;
+
+    // Release reserved inventory back to catalog
+    const releaseItems = order.items.map((item: any) => ({
+      productId: item.product.toString(),
+      quantity: item.quantity,
+    }));
+    try {
+      await catalogClient.releaseStock(releaseItems);
+    } catch (err) {
+      logger.error(`⚠️ Failed to release stock for failed payment order ${order.id}`, err);
+    }
+
+    order.statusHistory.push({
+      status: OrderStatus.CANCELLED,
+      timestamp: new Date(),
+      note: `Payment failed: ${note}. Reserved items returned to catalog.`,
+    });
     await order.save();
   }
 

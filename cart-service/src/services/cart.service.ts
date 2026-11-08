@@ -13,9 +13,13 @@ export class CartService {
     this.cartRepo = cartRepo;
   }
 
-  // Get user cart and populate product details in-memory
+  // Get user cart and populate product details in-memory with fresh pricing
   public async getCart(userId: string): Promise<any> {
     const cart = await this.cartRepo.getOrCreateCart(userId);
+    if (cart.items.length > 0) {
+      await this.recalculateTotals(cart);
+      await this.cartRepo.save(cart);
+    }
     return this.populateCartProducts(cart);
   }
 
@@ -165,16 +169,13 @@ export class CartService {
     }
 
     let discount = 0;
-    let freeShipping = false;
 
     if (cart.couponCode) {
       const coupon = await couponRepository.findByCode(cart.couponCode);
       if (coupon && coupon.isValid(subtotal)) {
-        if (coupon.discountType === CouponDiscountType.FREE_SHIPPING) {
-          freeShipping = true;
-        } else if (coupon.discountType === CouponDiscountType.PERCENTAGE) {
+        if (coupon.discountType === CouponDiscountType.PERCENTAGE) {
           discount = subtotal * (coupon.discountValue / 100);
-        } else {
+        } else if (coupon.discountType === CouponDiscountType.FIXED) {
           discount = coupon.discountValue;
         }
         discount = Math.min(discount, subtotal);
@@ -183,16 +184,15 @@ export class CartService {
       }
     }
 
-    const netAmount = subtotal - discount;
-    const shipping = cart.items.length === 0 || freeShipping ? 0 : netAmount >= 100 ? 0 : 10;
-    const tax = Math.round(netAmount * 0.1 * 100) / 100;
-    const grandTotal = Math.round((netAmount + tax + shipping) * 100) / 100;
+    const netAmount = Math.max(0, subtotal - discount);
+    // Tax and shipping are inclusive as set in the CMS product price
+    const grandTotal = Math.round(netAmount * 100) / 100;
 
     cart.totals = {
       subtotal: Math.round(subtotal * 100) / 100,
       discount: Math.round(discount * 100) / 100,
-      tax,
-      shipping,
+      tax: 0,
+      shipping: 0,
       grandTotal,
     };
   }

@@ -1,5 +1,5 @@
 import { Order } from '../models/order.model';
-import { PaymentStatus, OrderStatus } from '@shared/constants';
+import { PaymentStatus, OrderStatus, PaymentMethod } from '@shared/constants';
 import { countActiveProducts, countCustomers } from '../utils/clients';
 
 export interface IDashboardStats {
@@ -38,8 +38,13 @@ export class AnalyticsService {
           },
         },
       ]).exec(),
-      // Total Orders
-      Order.countDocuments({}).exec(),
+      // Total Orders: only count PAID orders or active COD orders (ignore unpaid/failed attempts)
+      Order.countDocuments({
+        $or: [
+          { paymentStatus: PaymentStatus.PAID },
+          { paymentMethod: PaymentMethod.COD, orderStatus: { $ne: OrderStatus.CANCELLED } },
+        ],
+      }).exec(),
       // Total Products (Catalog Service)
       countActiveProducts(),
       // Total Customers (Auth Service)

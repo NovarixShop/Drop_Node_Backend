@@ -101,30 +101,28 @@ export class OrderService {
       throw dbError;
     }
 
-    // 4. Clear User's Cart in Cart Service (Async REST call)
-    // Non-blocking: We log a warning if it fails, but we don't crash checkout since the order is already placed
-    try {
-      await cartClient.clearCart(userId);
-    } catch (cartErr) {
-      logger.warn(`⚠️ Failed to clear cart for user ${userId} after order placement.`, cartErr);
-    }
-
-    // 5. Publish order.placed event to Redis Pub/Sub for notifications
-    try {
-      await redisCache.publish('order.placed', {
-        orderId: order.id,
-        userId: userId,
-        grandTotal: order.totals.grandTotal,
-        trackingNumber: order.trackingNumber,
-        itemsCount: order.items.length,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (redisErr) {
-      logger.error('⚠️ Failed to publish order.placed event to Redis Pub/Sub', redisErr);
-    }
-
-    // 6. COD orders move immediately to processing status
+    // 4. For Cash on Delivery, approve order, clear cart, and broadcast immediately.
+    // For online payments (Razorpay), this is handled in markPaid once payment succeeds.
     if (paymentMethod === PaymentMethod.COD) {
+      try {
+        await cartClient.clearCart(userId);
+      } catch (cartErr) {
+        logger.warn(`⚠️ Failed to clear cart for user ${userId} after order placement.`, cartErr);
+      }
+
+      try {
+        await redisCache.publish('order.placed', {
+          orderId: order.id,
+          userId: userId,
+          grandTotal: order.totals.grandTotal,
+          trackingNumber: order.trackingNumber,
+          itemsCount: order.items.length,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (redisErr) {
+        logger.error('⚠️ Failed to publish order.placed event to Redis Pub/Sub', redisErr);
+      }
+
       const updated = await this.updateOrderStatus(order.id, OrderStatus.PROCESSING, 'Cash on delivery order approved.');
       if (updated) order = updated;
     }

@@ -53,6 +53,8 @@ jobs:
           key: ${{ secrets.HOSTINGER_SSH_KEY }}
           password: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
           port: ${{ secrets.HOSTINGER_SSH_PORT || 22 }}
+          timeout: 60s
+          command_timeout: 15m
           script_stop: true
           script: |
             TARGET_DIR="${{ secrets.HOSTINGER_BACKEND_DIR || '/var/www/Drop_Node_Backend' }}"
@@ -66,7 +68,8 @@ jobs:
             
             cd "$TARGET_DIR"
             
-            # Fetch and sync latest main
+            # Ensure origin points to the triggering repository and sync latest main
+            git remote set-url origin https://github.com/${{ github.repository }}.git
             git fetch origin main
             git reset --hard origin/main
             

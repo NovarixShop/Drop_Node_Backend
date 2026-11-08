@@ -11,6 +11,9 @@ export interface ICatalogProduct {
   stock: number;
   isActive: boolean;
   category: any;
+  tax?: number;
+  shippingCost?: number;
+  isCodAvailable?: boolean;
 }
 
 export class CatalogClient {

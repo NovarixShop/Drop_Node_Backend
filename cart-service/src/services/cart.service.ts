@@ -151,6 +151,8 @@ export class CartService {
   // Recalculate all cart totals
   public async recalculateTotals(cart: ICart): Promise<void> {
     let subtotal = 0;
+    let totalTax = 0;
+    let totalShipping = 0;
 
     const productIds = cart.items.map((item: any) => item.product.toString());
     if (productIds.length > 0) {
@@ -164,6 +166,12 @@ export class CartService {
         const product = productMap.get(prodId);
         if (product && product.isActive) {
           subtotal += product.price * item.quantity;
+          if (product.tax && product.tax > 0) {
+            totalTax += product.tax * item.quantity;
+          }
+          if (product.shippingCost && product.shippingCost > 0) {
+            totalShipping += product.shippingCost;
+          }
         }
       });
     }
@@ -185,14 +193,13 @@ export class CartService {
     }
 
     const netAmount = Math.max(0, subtotal - discount);
-    // Tax and shipping are inclusive as set in the CMS product price
-    const grandTotal = Math.round(netAmount * 100) / 100;
+    const grandTotal = Math.round((netAmount + totalTax + totalShipping) * 100) / 100;
 
     cart.totals = {
       subtotal: Math.round(subtotal * 100) / 100,
       discount: Math.round(discount * 100) / 100,
-      tax: 0,
-      shipping: 0,
+      tax: Math.round(totalTax * 100) / 100,
+      shipping: Math.round(totalShipping * 100) / 100,
       grandTotal,
     };
   }
@@ -201,26 +208,43 @@ export class CartService {
   public async populateCartProducts(cart: ICart): Promise<any> {
     const cartObj = cart.toObject();
     const productIds = cartObj.items.map((item: any) => item.product.toString());
-    if (productIds.length === 0) return cartObj;
+    if (productIds.length === 0) {
+      cartObj.isCodAvailable = true;
+      return cartObj;
+    }
 
     try {
       const products = await catalogClient.getProductsInBulk(productIds);
       const productMap = new Map<string, ICatalogProduct>();
       products.forEach(p => productMap.set(p._id.toString(), p));
 
+      let allCodAvailable = true;
       cartObj.items.forEach((item: any) => {
         const prodId = item.product.toString();
-        item.product = productMap.get(prodId) || {
-          _id: prodId,
-          name: 'Unknown Product',
-          price: 0,
-          stock: 0,
-          images: [],
-          isActive: false,
-        };
+        const p = productMap.get(prodId);
+        if (p) {
+          item.product = p;
+          if (p.isCodAvailable === false) {
+            allCodAvailable = false;
+          }
+        } else {
+          item.product = {
+            _id: prodId,
+            name: 'Unknown Product',
+            price: 0,
+            stock: 0,
+            images: [],
+            isActive: false,
+            tax: 0,
+            shippingCost: 0,
+            isCodAvailable: true,
+          };
+        }
       });
+      cartObj.isCodAvailable = allCodAvailable;
     } catch (err) {
       logger.error('Failed to populate cart products via REST', err);
+      cartObj.isCodAvailable = true;
     }
 
     return cartObj;

@@ -10,6 +10,9 @@ export interface IProduct extends Document {
   images: string[];
   stock: number;
   lowStockThreshold: number;
+  tax: number;
+  shippingCost: number;
+  isCodAvailable: boolean;
   averageRating: number;
   totalReviews: number;
   isActive: boolean;
@@ -67,6 +70,20 @@ const ProductSchema = new Schema<IProduct>(
     lowStockThreshold: {
       type: Number,
       default: 5,
+    },
+    tax: {
+      type: Number,
+      default: 0,
+      min: [0, 'Tax cannot be negative'],
+    },
+    shippingCost: {
+      type: Number,
+      default: 0,
+      min: [0, 'Shipping cost cannot be negative'],
+    },
+    isCodAvailable: {
+      type: Boolean,
+      default: true,
     },
     averageRating: {
       type: Number,

@@ -49,6 +49,13 @@ export class OrderService {
       throw new BadRequestError('Cannot checkout an empty cart');
     }
 
+    if (paymentMethod === PaymentMethod.COD) {
+      const codForbidden = cart.items.some((item: any) => item.product?.isCodAvailable === false);
+      if (codForbidden) {
+        throw new BadRequestError('Cash on Delivery is not available for one or more items in your cart. Please select online payment.');
+      }
+    }
+
     // 2. Reserve stock in Catalog Service (Sync REST API call)
     const reserveItems = cart.items.map((item: any) => ({
       productId: item.product._id.toString(),

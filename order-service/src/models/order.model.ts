@@ -1,5 +1,19 @@
-import { Schema, model, Document } from 'mongoose';
+import mongoose, { Schema, model, Document } from 'mongoose';
 import { OrderStatus, PaymentStatus, PaymentMethod } from '@shared/constants';
+
+// Register lightweight User schema for population across microservices sharing the database
+if (!mongoose.models.User) {
+  mongoose.model(
+    'User',
+    new Schema(
+      {
+        name: { type: String },
+        email: { type: String },
+      },
+      { timestamps: false }
+    )
+  );
+}
 
 export interface IOrderItem {
   product: Schema.Types.ObjectId;
@@ -75,6 +89,7 @@ const OrderSchema = new Schema<IOrder>(
   {
     user: {
       type: Schema.Types.ObjectId,
+      ref: 'User',
       required: true,
       index: true,
     },

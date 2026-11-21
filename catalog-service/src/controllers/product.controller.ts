@@ -34,6 +34,8 @@ const productFields = {
   tax: z.coerce.number().min(0, 'Tax cannot be negative').default(0),
   shippingCost: z.coerce.number().min(0, 'Shipping cost cannot be negative').default(0),
   isCodAvailable: z.coerce.boolean().default(true),
+  sizes: z.array(z.string().trim()).default([]),
+  colors: z.array(z.string().trim()).default([]),
 };
 
 const createProductSchema = z.object({
@@ -44,6 +46,8 @@ const createProductSchema = z.object({
   tax: productFields.tax.default(0),
   shippingCost: productFields.shippingCost.default(0),
   isCodAvailable: productFields.isCodAvailable.default(true),
+  sizes: productFields.sizes.default([]),
+  colors: productFields.colors.default([]),
 });
 
 // Only plain string query params reach the services (?category=a&category=b would otherwise be an array)

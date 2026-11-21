@@ -71,6 +71,8 @@ export class OrderService {
       name: item.product.name,
       price: item.product.price,
       quantity: item.quantity,
+      size: item.size || '',
+      color: item.color || '',
     }));
 
     const trackingNumber = 'TRK-' + uuidv4().slice(-12).toUpperCase();

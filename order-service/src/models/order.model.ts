@@ -30,6 +30,8 @@ export interface IOrderItem {
   name: string;
   price: number;
   quantity: number;
+  size?: string;
+  color?: string;
 }
 
 export interface IOrderStatusHistory {
@@ -80,6 +82,8 @@ const OrderItemSchema = new Schema<IOrderItem>({
   name: { type: String, required: true },
   price: { type: Number, required: true },
   quantity: { type: Number, required: true, min: 1 },
+  size: { type: String, default: '' },
+  color: { type: String, default: '' },
 });
 
 const OrderStatusHistorySchema = new Schema<IOrderStatusHistory>({

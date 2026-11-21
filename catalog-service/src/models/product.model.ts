@@ -13,6 +13,8 @@ export interface IProduct extends Document {
   tax: number;
   shippingCost: number;
   isCodAvailable: boolean;
+  sizes: string[];
+  colors: string[];
   averageRating: number;
   totalReviews: number;
   isActive: boolean;
@@ -84,6 +86,14 @@ const ProductSchema = new Schema<IProduct>(
     isCodAvailable: {
       type: Boolean,
       default: true,
+    },
+    sizes: {
+      type: [String],
+      default: [],
+    },
+    colors: {
+      type: [String],
+      default: [],
     },
     averageRating: {
       type: Number,

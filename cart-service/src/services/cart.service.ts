@@ -24,7 +24,7 @@ export class CartService {
   }
 
   // Add item to cart
-  public async addToCart(userId: string, productId: string, quantity = 1): Promise<any> {
+  public async addToCart(userId: string, productId: string, quantity = 1, size = '', color = ''): Promise<any> {
     const cart = await this.cartRepo.getOrCreateCart(userId);
     
     // Fetch product details from Catalog Service
@@ -37,9 +37,9 @@ export class CartService {
       throw new BadRequestError(`Insufficient stock. Only ${product.stock} units available.`);
     }
 
-    // Check if product is already in cart
+    // Check if product with same size and color is already in cart
     const itemIndex = cart.items.findIndex(
-      (item) => item.product.toString() === productId
+      (item) => item.product.toString() === productId && (item.size || '') === (size || '') && (item.color || '') === (color || '')
     );
 
     if (itemIndex > -1) {
@@ -49,7 +49,7 @@ export class CartService {
       }
       cart.items[itemIndex].quantity = newQuantity;
     } else {
-      cart.items.push({ product: productId as any, quantity });
+      cart.items.push({ product: productId as any, quantity, size: size || '', color: color || '' });
     }
 
     await this.recalculateTotals(cart);

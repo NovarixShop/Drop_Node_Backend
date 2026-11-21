@@ -37,16 +37,19 @@ export class AuthService {
     }
 
     const verificationToken = uuidv4();
+    const isSmtpConfigured = Boolean(process.env.EMAIL_USER && process.env.EMAIL_PASS);
 
     const user = await this.userRepo.create({
       name,
       email,
       password,
       verificationToken,
-      isVerified: false,
+      isVerified: !isSmtpConfigured,
     });
 
-    sendVerificationEmail(user.email, user.name, verificationToken);
+    if (isSmtpConfigured) {
+      sendVerificationEmail(user.email, user.name, verificationToken);
+    }
 
     const userObj = user.toObject();
     delete userObj.password;
@@ -100,8 +103,15 @@ export class AuthService {
       throw new UnauthorizedError('Invalid email or password');
     }
 
+    const isSmtpConfigured = Boolean(process.env.EMAIL_USER && process.env.EMAIL_PASS);
     if (!user.isVerified) {
-      throw new UnauthorizedError('Please verify your email address first');
+      if (isSmtpConfigured) {
+        throw new UnauthorizedError('Please verify your email address first');
+      } else {
+        // In environments without SMTP configured, auto-verify user so login works smoothly
+        user.isVerified = true;
+        await user.save();
+      }
     }
 
     const payload = { userId: user.id, role: user.role };

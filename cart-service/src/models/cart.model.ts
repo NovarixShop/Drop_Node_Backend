@@ -3,6 +3,8 @@ import { Schema, model, Document } from 'mongoose';
 export interface ICartItem {
   product: any; // Will be populated in-memory as a Product object, or stored as ObjectId
   quantity: number;
+  size?: string;
+  color?: string;
 }
 
 export interface ICartTotals {
@@ -32,6 +34,14 @@ const CartItemSchema = new Schema<ICartItem>({
     required: true,
     min: [1, 'Quantity must be at least 1'],
     default: 1,
+  },
+  size: {
+    type: String,
+    default: '',
+  },
+  color: {
+    type: String,
+    default: '',
   },
 });
 

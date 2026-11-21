@@ -5,6 +5,8 @@ import { z } from 'zod';
 const addToCartSchema = z.object({
   productId: z.string().min(1, 'Product ID is required'),
   quantity: z.coerce.number().int().min(1, 'Quantity must be at least 1').optional().default(1),
+  size: z.string().optional().default(''),
+  color: z.string().optional().default(''),
 });
 
 const updateQuantitySchema = z.object({
@@ -32,8 +34,8 @@ export class CartController {
   public async add(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = req.authUser!.id;
-      const { productId, quantity } = addToCartSchema.parse(req.body);
-      const cart = await cartService.addToCart(userId, productId, quantity);
+      const { productId, quantity, size, color } = addToCartSchema.parse(req.body);
+      const cart = await cartService.addToCart(userId, productId, quantity, size, color);
 
       res.status(200).json({
         status: 'success',

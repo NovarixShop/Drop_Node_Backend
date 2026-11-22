@@ -54,10 +54,10 @@ export class TrackingService {
 
     if (order.paymentStatus === 'paid' || order.orderStatus !== OrderStatus.PENDING) {
       checkpoints.push({
-        status: 'Payment Confirmed',
+        status: 'Payment Done',
         location: 'Billing Center',
         timestamp: paidTime,
-        description: 'Payment has been cleared. Warehouse has been authorized to release items.',
+        description: 'Payment received and verified successfully. Order is confirmed.',
       });
     }
 

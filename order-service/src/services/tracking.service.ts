@@ -56,14 +56,33 @@ export class TrackingService {
     // 2. Online Payment Confirmation Checkpoint (if paid)
     if (order.paymentStatus === PaymentStatus.PAID && order.paymentMethod !== PaymentMethod.COD) {
       const paymentEntry = order.statusHistory?.find(
-        (h) => h.note?.toLowerCase().includes('payment') || h.note?.toLowerCase().includes('razorpay')
+        (h, index) =>
+          index > 0 &&
+          (h.note?.toLowerCase().includes('payment received') ||
+            h.note?.toLowerCase().includes('razorpay') ||
+            h.status === OrderStatus.PROCESSING)
       );
-      const paymentTime = paymentEntry?.timestamp ? new Date(paymentEntry.timestamp) : initialTime;
+
+      const paidAtStr = (order.paymentDetails as Record<string, any>)?.paidAt;
+      const paymentTime = paidAtStr
+        ? new Date(paidAtStr)
+        : paymentEntry?.timestamp
+        ? new Date(paymentEntry.timestamp)
+        : new Date(initialTime.getTime() + 1000);
+
+      const method = (order.paymentDetails as Record<string, any>)?.method || 'Card / Online';
+      const txnId = (order.paymentDetails as Record<string, any>)?.transactionId;
+      const description = txnId
+        ? `Payment received successfully via ${method}. Transaction ID: ${txnId}.`
+        : paymentEntry?.note && !paymentEntry.note.toLowerCase().includes('awaiting')
+        ? paymentEntry.note
+        : 'Payment received and verified successfully. Order confirmed.';
+
       checkpoints.push({
-        status: 'Payment Confirmed',
+        status: 'Payment Done',
         location: 'Billing Center',
         timestamp: paymentTime,
-        description: paymentEntry?.note || 'Payment has been cleared. Warehouse has been authorized to process your items.',
+        description,
       });
     }
 
@@ -81,9 +100,9 @@ export class TrackingService {
 
         switch (h.status) {
           case OrderStatus.PROCESSING:
-            statusLabel = 'Processing';
+            statusLabel = 'Payment Done';
             location = 'Fulfillment Center';
-            defaultDesc = 'Order is being verified and packed for shipment.';
+            defaultDesc = 'Payment verified. Order is confirmed and being packed for shipment.';
             break;
           case OrderStatus.SHIPPED:
             statusLabel = 'Shipped & In Transit';

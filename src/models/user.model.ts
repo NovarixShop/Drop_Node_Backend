@@ -18,6 +18,7 @@ export interface IUser extends Document {
   name: string;
   email: string;
   password?: string;
+  phone?: string;
   role: UserRole;
   isVerified: boolean;
   verificationToken?: string;
@@ -61,6 +62,11 @@ const UserSchema = new Schema<IUser>(
         'Please provide a valid email',
       ],
       index: true,
+    },
+    phone: {
+      type: String,
+      trim: true,
+      default: '',
     },
     password: {
       type: String,

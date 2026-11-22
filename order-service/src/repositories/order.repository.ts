@@ -4,7 +4,7 @@ import { FilterQuery } from 'mongoose';
 export class OrderRepository {
   // Find order by ID
   public async findById(id: string): Promise<IOrder | null> {
-    return Order.findById(id).populate('user', 'name email').exec();
+    return Order.findById(id).populate('user', 'name email phone').exec();
   }
 
   // Create an order
@@ -21,7 +21,7 @@ export class OrderRepository {
   ): Promise<{ orders: IOrder[]; total: number }> {
     const [orders, total] = await Promise.all([
       Order.find(filter)
-        .populate('user', 'name email')
+        .populate('user', 'name email phone')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)

@@ -5,7 +5,7 @@ export class OrderRepository {
   // Find order by ID and populate user details
   public async findById(id: string): Promise<IOrder | null> {
     return Order.findById(id)
-      .populate('user', 'name email')
+      .populate('user', 'name email phone')
       .populate('items.product', 'name slug images')
       .exec();
   }
@@ -31,7 +31,7 @@ export class OrderRepository {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('user', 'name email')
+        .populate('user', 'name email phone')
         .exec(),
       Order.countDocuments(filter).exec(),
     ]);

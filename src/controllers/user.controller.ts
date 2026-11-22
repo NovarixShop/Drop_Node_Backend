@@ -5,7 +5,17 @@ import { AddressType, UserRole } from '../constants';
 
 // Zod validation schemas
 const updateProfileSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters').max(50),
+  name: z.string().min(2, 'Name must be at least 2 characters').max(50).optional(),
+  phone: z.string().max(20).optional(),
+  address: z
+    .object({
+      street: z.string().min(1),
+      city: z.string().min(1),
+      state: z.string().min(1),
+      postalCode: z.string().min(1),
+      country: z.string().min(1),
+    })
+    .optional(),
 });
 
 const addAddressSchema = z.object({

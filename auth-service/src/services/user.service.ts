@@ -1,7 +1,7 @@
 import { userRepository, UserRepository } from '../repositories/user.repository';
 import { IUser, IAddress } from '../models/user.model';
 import { NotFoundError, BadRequestError } from '@shared/errors/app-error';
-import { UserRole } from '@shared/constants';
+import { UserRole, AddressType } from '@shared/constants';
 
 
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -21,17 +21,57 @@ export class UserService {
     return user;
   }
 
-  public async updateProfile(userId: string, updateData: { name?: string }): Promise<IUser> {
-    const { name } = updateData;
-    if (!name) {
-      throw new BadRequestError('Name is required');
+  public async updateProfile(
+    userId: string,
+    updateData: {
+      name?: string;
+      phone?: string;
+      address?: {
+        street: string;
+        city: string;
+        state: string;
+        postalCode: string;
+        country: string;
+      };
     }
-
-    const updatedUser = await this.userRepo.update(userId, { name });
-    if (!updatedUser) {
+  ): Promise<IUser> {
+    const user = await this.userRepo.findById(userId);
+    if (!user) {
       throw new NotFoundError('User not found');
     }
-    return updatedUser;
+
+    if (updateData.name) {
+      user.name = updateData.name;
+    }
+    if (updateData.phone !== undefined) {
+      user.phone = updateData.phone;
+    }
+
+    if (updateData.address) {
+      const { street, city, state, postalCode, country } = updateData.address;
+      if (user.addresses && user.addresses.length > 0) {
+        user.addresses[0].street = street;
+        user.addresses[0].city = city;
+        user.addresses[0].state = state;
+        user.addresses[0].postalCode = postalCode;
+        user.addresses[0].country = country;
+      } else {
+        user.addresses = [
+          {
+            street,
+            city,
+            state,
+            postalCode,
+            country,
+            type: AddressType.SHIPPING,
+            isDefault: true,
+          } as any,
+        ];
+      }
+    }
+
+    await user.save();
+    return user;
   }
 
   public async addAddress(userId: string, addressData: Partial<IAddress>): Promise<IAddress[]> {
@@ -121,6 +161,7 @@ export class UserService {
       filter.$or = [
         { name: { $regex: escapeRegex(query.search), $options: 'i' } },
         { email: { $regex: escapeRegex(query.search), $options: 'i' } },
+        { phone: { $regex: escapeRegex(query.search), $options: 'i' } },
       ];
     }
 

@@ -9,6 +9,7 @@ if (!mongoose.models.User) {
       {
         name: { type: String },
         email: { type: String },
+        phone: { type: String },
       },
       { timestamps: false }
     )
@@ -51,6 +52,7 @@ export interface IOrder extends Document {
     state: string;
     postalCode: string;
     country: string;
+    phone?: string;
   };
   billingAddress: {
     street: string;
@@ -114,6 +116,7 @@ const OrderSchema = new Schema<IOrder>(
       state: { type: String, required: true },
       postalCode: { type: String, required: true },
       country: { type: String, required: true },
+      phone: { type: String, default: '' },
     },
     billingAddress: {
       street: { type: String, required: true },
